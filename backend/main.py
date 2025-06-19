@@ -1,100 +1,88 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import Optional
-import os
-from dotenv import load_dotenv
-import openai
-from langchain.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage
-import asyncpg
-import json
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import logging
+import uvicorn
+from contextlib import asynccontextmanager
 
-load_dotenv()
-
-app = FastAPI(title="CloverdashBot Backend", version="1.0.0")
+from config.settings import settings
+from api.routes import router
+from services.database import database_service
+from services.llm_service import llm_service
 
 
-# Pydantic models for request/response
-class QueryRequest(BaseModel):
-    question: str
-    user_id: Optional[str] = None
+# Настройка логирования
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper()),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+
+logger = logging.getLogger(__name__)
 
 
-class QueryResponse(BaseModel):
-    answer: str
-    sql_query: Optional[str] = None
-    success: bool
-
-
-# Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/database")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# Initialize OpenAI
-openai.api_key = OPENAI_API_KEY
-llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo")
-
-# Database schema context - будет расширяться
-DB_SCHEMA_CONTEXT = """
-Доступные таблицы и колонки в базе данных:
-(Здесь будет описание схемы базы данных)
-"""
-
-
-@app.get("/")
-async def root():
-    return {"message": "CloverdashBot Backend API"}
-
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
-
-
-@app.post("/query", response_model=QueryResponse)
-async def process_query(request: QueryRequest):
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """
-    Обрабатывает вопрос пользователя, создает SQL запрос с помощью LLM
-    и возвращает результат из базы данных
+    Управление жизненным циклом приложения
     """
+    # Startup
+    logger.info("Starting CloverdashBot Backend...")
+
     try:
-        # Создаем промпт для LLM
-        system_prompt = f"""
-        Ты - эксперт по SQL запросам. Твоя задача - создать SQL запрос на основе вопроса пользователя.
-        
-        Контекст базы данных:
-        {DB_SCHEMA_CONTEXT}
-        
-        Правила:
-        1. Возвращай только SQL запрос, без дополнительного текста
-        2. Используй только SELECT запросы
-        3. Запрос должен быть безопасным и не содержать потенциально вредоносного кода
-        """
-
-        human_prompt = f"Вопрос пользователя: {request.question}"
-
-        # Получаем SQL запрос от LLM
-        messages = [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
-
-        response = llm(messages)
-        sql_query = response.content.strip()
-
-        # Выполняем запрос к базе данных
-        # TODO: Реализовать подключение к базе данных
-        # conn = await asyncpg.connect(DATABASE_URL)
-        # result = await conn.fetch(sql_query)
-        # await conn.close()
-
-        # Временная заглушка
-        result = f"Результат выполнения запроса: {sql_query}"
-
-        return QueryResponse(answer=result, sql_query=sql_query, success=True)
-
+        # Инициализируем подключение к базе данных
+        await database_service.initialize()
+        logger.info("Database service initialized")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка обработки запроса: {str(e)}")
+        logger.warning(f"Database initialization failed: {str(e)}")
+        logger.warning("Application will continue without database connection")
+
+    # Инициализируем LLM сервис (уже инициализирован при импорте)
+    logger.info("LLM service ready")
+
+    logger.info("Backend startup completed")
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down CloverdashBot Backend...")
+
+    # Закрываем подключение к базе данных
+    try:
+        await database_service.close()
+        logger.info("Database connections closed")
+    except Exception as e:
+        logger.error(f"Error closing database connections: {str(e)}")
+
+    logger.info("Backend shutdown completed")
+
+
+# Создаем приложение FastAPI
+app = FastAPI(
+    title=settings.api_title,
+    version=settings.api_version,
+    description="Backend API для CloverdashBot - телеграм-бот для работы с базой данных через естественный язык",
+    lifespan=lifespan,
+)
+
+# Настройка CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Подключаем роуты
+app.include_router(router)
 
 
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Запуск сервера
+    uvicorn.run(
+        "main:app",
+        host=settings.api_host,
+        port=settings.api_port,
+        reload=True,  # Для разработки
+        log_level=settings.log_level.lower(),
+    )
