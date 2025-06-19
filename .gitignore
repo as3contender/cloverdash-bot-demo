@@ -76,4 +76,12 @@ logs/
 
 # Temporary files
 *.tmp
-*.temp 
+*.temp
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+.tox/ 

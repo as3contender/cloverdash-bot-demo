@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     openai_temperature: float = 0
 
     # Database Configuration
-    database_url: str
+    database_url: str = f"postgresql://{os.getenv('DATABASE_USER')}:{os.getenv('DATABASE_PASSWORD')}@{os.getenv('DATABASE_HOST')}:{os.getenv('DATABASE_PORT')}/{os.getenv('DATABASE_NAME')}"
     database_echo: bool = False
 
     # API Configuration
@@ -37,15 +37,8 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # База данных схема контекст
-DB_SCHEMA_CONTEXT = """
-Доступные таблицы и колонки в базе данных:
+import json
 
-Это место для описания схемы базы данных, которое будет передаваться в контекст LLM.
-Здесь должно быть описание всех таблиц, их колонок, типов данных и связей.
-
-Пример:
-- Таблица users: id (int), name (varchar), email (varchar), created_at (timestamp)
-- Таблица orders: id (int), user_id (int), amount (decimal), status (varchar), created_at (timestamp)
-
-Будет расширяться по мере подключения реальной базы данных.
-"""
+# Load database schema context from column_description.json
+with open('column_descriptions.json', 'r', encoding='utf-8') as file:
+    DB_SCHEMA_CONTEXT = json.load(file)
