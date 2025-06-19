@@ -152,14 +152,14 @@ def temp_column_descriptions_file(column_descriptions, tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def setup_test_environment(temp_column_descriptions_file):
+def setup_test_environment():
     """Автоматическая настройка тестового окружения"""
-    # Устанавливаем тестовые переменные окружения
-    test_env = {
-        "OPENAI_API_KEY": "test_key",
-        "DATABASE_URL": "postgresql://test:test@localhost:5432/test_db",
-        "LOG_LEVEL": "DEBUG",
-    }
-
-    with patch.dict(os.environ, test_env):
+    # Мокаем настройки для избежания валидационных ошибок
+    with patch("config.settings.settings") as mock_settings:
+        mock_settings.openai_api_key = "test_key"
+        mock_settings.openai_model = "gpt-3.5-turbo"
+        mock_settings.openai_temperature = 0
+        mock_settings.get_database_url.return_value = "postgresql://test:test@localhost:5432/test_db"
+        mock_settings.api_version = "1.0.0"
+        mock_settings.log_level = "DEBUG"
         yield

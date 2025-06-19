@@ -11,8 +11,13 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-3.5-turbo"
     openai_temperature: float = 0
 
-    # Database Configuration
-    database_url: str = f"postgresql://{os.getenv('DATABASE_USER')}:{os.getenv('DATABASE_PASSWORD')}@{os.getenv('DATABASE_HOST')}:{os.getenv('DATABASE_PORT')}/{os.getenv('DATABASE_NAME')}"
+    # Database Configuration (можно использовать либо database_url, либо отдельные параметры)
+    database_url: Optional[str] = None
+    database_host: Optional[str] = None
+    database_port: Optional[int] = None
+    database_user: Optional[str] = None
+    database_password: Optional[str] = None
+    database_name: Optional[str] = None
     database_echo: bool = False
 
     # API Configuration
@@ -31,14 +36,31 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "allow"  # Разрешаем дополнительные поля
+
+    def get_database_url(self) -> str:
+        """Получаем URL базы данных из настроек"""
+        if self.database_url:
+            return self.database_url
+        elif all(
+            [self.database_host, self.database_port, self.database_user, self.database_password, self.database_name]
+        ):
+            return f"postgresql://{self.database_user}:{self.database_password}@{self.database_host}:{self.database_port}/{self.database_name}"
+        else:
+            # Возвращаем тестовый URL по умолчанию
+            return "postgresql://test:test@localhost:5432/test_db"
 
 
 # Создаем глобальный экземпляр настроек
 settings = Settings()
 
 # База данных схема контекст
-import json
+DB_SCHEMA_CONTEXT = None
 
-# Load database schema context from column_description.json
-with open('column_descriptions.json', 'r', encoding='utf-8') as file:
-    DB_SCHEMA_CONTEXT = json.load(file)
+try:
+    import json
+
+    with open("column_descriptions.json", "r", encoding="utf-8") as file:
+        DB_SCHEMA_CONTEXT = json.load(file)
+except (FileNotFoundError, json.JSONDecodeError) as e:
+    print(f"Error loading DB schema context: {e}")

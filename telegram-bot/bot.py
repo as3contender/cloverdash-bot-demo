@@ -37,7 +37,10 @@ class CloverdashBot:
 
 Просто задай мне вопрос о данных, и я найду ответ! 
 
-Например: "Сколько заказов было сделано за последний месяц?"
+Примеры:
+• "Покажи текущее время"
+• "Какой объем продаж в январе?"
+• "Какой самый продаваемый товар?"
         """
         await update.message.reply_text(welcome_message)
 
@@ -53,9 +56,9 @@ class CloverdashBot:
 Просто напиши свой вопрос о данных на русском языке, и я найду ответ!
 
 Примеры вопросов:
-• "Покажи топ-10 клиентов по объему продаж"
-• "Сколько новых пользователей зарегистрировалось на этой неделе?"
-• "Какой средний чек в разрезе по регионам?"
+• "Покажи текущее время и дату"
+• "Какой объем продаж в январе?"
+• "Покажи список таблиц в базе данных"
 
 ⚠️ Важно: Я работаю только с SELECT запросами для безопасности данных.
         """
@@ -70,19 +73,48 @@ class CloverdashBot:
         processing_message = await update.message.reply_text("🔍 Обрабатываю ваш запрос...")
 
         try:
-            # Отправляем запрос к backend API
+            # Отправляем запрос к backend API (исправлено: query вместо question)
             async with aiohttp.ClientSession() as session:
-                payload = {"question": user_question, "user_id": user_id}
+                payload = {"query": user_question, "user_id": user_id}
 
                 async with session.post(f"{BACKEND_URL}/query", json=payload) as response:
                     if response.status == 200:
                         result = await response.json()
 
-                        # Формируем ответ
-                        reply_message = f"✅ *Ответ:*\n{result['answer']}"
+                        if result.get("success"):
+                            # Формируем ответ для успешного запроса
+                            reply_message = f"✅ *Результат:*\n"
 
-                        if result.get("sql_query"):
-                            reply_message += f"\n\n📝 *SQL запрос:*\n```sql\n{result['sql_query']}\n```"
+                            # Добавляем данные если они есть
+                            if result.get("data") and len(result["data"]) > 0:
+                                data_count = len(result["data"])
+                                reply_message += f"📊 Найдено записей: {data_count}\n\n"
+
+                                # Показываем первые несколько записей
+                                for i, row in enumerate(result["data"][:3]):  # Первые 3 записи
+                                    reply_message += f"🔹 Запись {i+1}:\n"
+                                    for key, value in row.items():
+                                        reply_message += f"   • {key}: {value}\n"
+                                    reply_message += "\n"
+
+                                if data_count > 3:
+                                    reply_message += f"... и ещё {data_count - 3} записей\n\n"
+
+                            # Добавляем объяснение если есть
+                            if result.get("explanation"):
+                                reply_message += f"💬 *Объяснение:*\n{result['explanation']}\n\n"
+
+                            # Добавляем SQL запрос
+                            if result.get("sql_query"):
+                                reply_message += f"📝 *SQL запрос:*\n```sql\n{result['sql_query']}\n```\n\n"
+
+                            # Добавляем время выполнения
+                            if result.get("execution_time"):
+                                reply_message += f"⏱️ Время выполнения: {result['execution_time']:.2f}с"
+
+                        else:
+                            # Обработка ошибки от API
+                            reply_message = f"❌ *Ошибка:*\n{result.get('message', 'Неизвестная ошибка')}"
 
                         # Удаляем сообщение о обработке и отправляем результат
                         await processing_message.delete()
@@ -109,7 +141,13 @@ def main():
     """Запуск бота"""
     if not TELEGRAM_TOKEN:
         logger.error("TELEGRAM_TOKEN not found in environment variables")
+        print("❌ Ошибка: TELEGRAM_TOKEN не найден в переменных окружения")
+        print("📝 Добавьте его в файл .env:")
+        print("TELEGRAM_TOKEN=your_bot_token_here")
         return
+
+    print(f"🚀 Запуск CloverdashBot...")
+    print(f"🔗 Backend URL: {BACKEND_URL}")
 
     # Создаем приложение
     application = Application.builder().token(TELEGRAM_TOKEN).build()

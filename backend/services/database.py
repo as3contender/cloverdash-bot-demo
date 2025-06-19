@@ -16,7 +16,7 @@ class DatabaseService:
 
     def __init__(self):
         """Инициализация сервиса базы данных"""
-        self.database_url = settings.database_url
+        self.database_url = settings.get_database_url()
         self.pool: Optional[asyncpg.Pool] = None
         self._connection_status = False
 

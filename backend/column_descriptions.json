@@ -1,129 +1,193 @@
 {
   "bill_date_year": {
+    "datatype": "numeric",
+    "placeholder": "2025",
     "теги": "чек, дата, год",
     "описание": "год чека"
   },
   "bill_date_quarter": {
+    "datatype": "numeric",
+    "placeholder": "1",
     "теги": "чек, дата, квартал",
     "описание": "квартал чека"
   },
   "bill_date_month": {
+    "datatype": "numeric",
+    "placeholder": "1",
     "теги": "чек, дата, месяц",
     "описание": "месяц чека"
   },
   "bill_date_week": {
+    "datatype": "numeric",
+    "placeholder": "40",
     "теги": "чек, дата, неделя",
     "описание": "неделя чека"
   },
   "bill_year_month": {
+    "datatype": "text",
+    "placeholder": "2025-01",
     "теги": "чек, дата, год, месяц",
     "описание": "год и месяц чека"
   },
   "bill_month_name_year": {
+    "datatype": "text",
+    "placeholder": "Январь 25",
     "теги": "чек, дата, год, название месяца",
     "описание": "год и название месяца чека"
   },
   "bill_date": {
+    "datatype": "date",
+    "placeholder": "2025-01-01",
     "теги": "чек, дата",
     "описание": "дата чека"
   },
   "bill_date_day": {
+    "datatype": "numeric",
+    "placeholder": "2",
     "теги": "чек, дата, день",
     "описание": "день чека"
   },
   "bill_date_doy": {
+    "datatype": "numeric",
+    "placeholder": "261",
     "теги": "чек, дата, день года",
     "описание": "день года чека"
   },
   "bill_date_dow": {
+    "datatype": "numeric",
+    "placeholder": "1",
     "теги": "чек, дата, день недели",
     "описание": "день недели чека"
   },
   "bill_date_dow_name": {
+    "datatype": "text",
+    "placeholder": "пн",
     "теги": "чек, дата, день недели, название",
     "описание": "день недели и название чека"
   },
   "bill_date_dow_group": {
+    "datatype": "text",
+    "placeholder": "пн-чт, пт-вс",
     "теги": "чек, дата, день недели, группа",
     "описание": "день недели и группа чека"
   },
   "bill_time": {
+    "datatype": "time",
+    "placeholder": "10:00:00",
     "теги": "чек, дата, время",
     "описание": "время чека"
   },
   "bill_date_hour": {
+    "datatype": "numeric",
+    "placeholder": "10",
     "теги": "чек, дата, час",
     "описание": "час чека"
   },
   "bill_date_hour_sort": {
+    "datatype": "numeric",
+    "placeholder": "10",
     "теги": "чек, дата, час, сортировка",
     "описание": "час и сортировка чека"
   },
   "bill_key": {
+    "datatype": "character varying",
+    "placeholder": "2025-03-02_00ТЗ-012208",
     "теги": "чек, ключ, номер, дата",
     "описание": "ключ чека, содержащий номер, дату"
   },
   "bill_code": {
+    "datatype": "character varying",
+    "placeholder": "00ТЗ-012208",
     "теги": "чек, код",
     "описание": "код чека"
   },
   "customer_id": {
+    "datatype": "character varying",
+    "placeholder": "ABC Technologies",
     "теги": "покупатель, дисконтная карта, бонусная карта",
     "описание": "уникальный идентификатор покупателя"
   },
   "goods_type": {
+    "datatype": "character varying",
+    "placeholder": " First-Class Pomoga",
     "теги": "товар, тип",
     "описание": "категория или тип товара"
   },
   "goods_group": {
+    "datatype": "character varying",
+    "placeholder": "Продукты",
     "теги": "товар, группа",
     "описание": "группа товара"
   },
   "goods_code": {
+    "datatype": "character varying",
+    "placeholder": "РО-00005632",
     "теги": "товар, код",
     "описание": "код товара"
   },
   "goods_vendor_code": {
+    "datatype": "character varying",
+    "placeholder": "00ТЗ-012208",
     "теги": "товар, код поставщика",
     "описание": "код поставщика товара"
   },
   "goods_name": {
+    "datatype": "character varying",
+    "placeholder": "Батут SportsPower SP-4-10-020 ",
     "теги": "товар, наименование",
     "описание": "название товара"
   },
   "goods_full_name": {
+    "datatype": "character varying",
+    "placeholder": "Батут SportsPower SP-4-10-020 ",
     "теги": "товар, полное наименование",
     "описание": "полное название товара"
   },
   "row_quantity": {
+    "datatype": "numeric",
+    "placeholder": "1",
     "теги": "товар, количество",
     "описание": "количество товара"
   },
   "row_amount": {
+    "datatype": "numeric",
+    "placeholder": "100",
     "теги": "товар, цена",
     "описание": "цена товара"
   },
   "row_sum": {
+    "datatype": "numeric",
+    "placeholder": "100",
     "теги": "товар, сумма",
     "описание": "сумма товара"
   },
   "row_sale": {
+    "datatype": "numeric",
+    "placeholder": "10",
     "теги": "товар, скидка",
     "описание": "скидка на товар"
   },
   "row_sale_bonuses": {
+    "datatype": "numeric",
+    "placeholder": "10",
     "теги": "товар, бонусы",
     "описание": "бонусы на товар"
   },
   "cogs": {
+    "datatype": "numeric",
+    "placeholder": "100",
     "теги": "товар, себестоимость",
     "описание": "себестоимость товара"
   },
   "cogs_sum": {
+    "datatype": "numeric",
+    "placeholder": "100",
     "теги": "товар, себестоимость, сумма",
     "описание": "сумма себестоимости товара"
   },
   "payment_type": {
+    "datatype": "character varying",
+    "placeholder": "Cash",
     "теги": "оплата, тип",
     "описание": "тип оплаты"
   }
