@@ -104,7 +104,11 @@ pip install -r requirements.txt
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-DATABASE_URL=postgresql://username:password@localhost:5432/database_name
+DATABASE_HOST=localhost
+DATABASE_PORT=5160
+DATABASE_USER=postgress
+DATABASE_PASSWORD=password
+DATABASE_NAME=mydatabase
 ```
 
 ### 3. Запуск
