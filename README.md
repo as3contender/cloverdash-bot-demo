@@ -60,9 +60,11 @@ pip install -r requirements.txt
 Создайте файл `backend/.env`:
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-DATABASE_URL=postgresql://username:password@localhost:5432/database_name
-API_HOST=0.0.0.0
-API_PORT=8000
+DATABASE_HOST=localhost
+DATABASE_PORT=5160
+DATABASE_USER=postgress
+DATABASE_PASSWORD=password
+DATABASE_NAME=mydatabase
 ```
 
 2. **Telegram Bot конфигурация:**
