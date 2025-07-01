@@ -26,19 +26,59 @@ class CloverdashBot:
         """Remove Markdown formatting from text for plain text display"""
         import re
 
-        # Remove bold and italic formatting
-        text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)  # Remove **bold**
-        text = re.sub(r"\*(.*?)\*", r"\1", text)  # Remove *italic*
-        text = re.sub(r"_(.*?)_", r"\1", text)  # Remove _italic_
+        # Remove code blocks first (multiline)
+        text = re.sub(r"```[\w]*\n?(.*?)\n?```", r"\1", text, flags=re.DOTALL)
 
-        # Remove code blocks
-        text = re.sub(r"```[\w]*\n(.*?)\n```", r"\1", text, flags=re.DOTALL)
-        text = re.sub(r"`(.*?)`", r"\1", text)  # Remove `inline code`
+        # Remove inline code
+        text = re.sub(r"`([^`]+)`", r"\1", text)
+
+        # Remove bold formatting
+        text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+
+        # Remove italic formatting (both * and _)
+        text = re.sub(r"\*([^*]+)\*", r"\1", text)
+        text = re.sub(r"_([^_]+)_", r"\1", text)
+
+        # Remove strikethrough
+        text = re.sub(r"~~([^~]+)~~", r"\1", text)
+
+        # Remove headers
+        text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+
+        # Remove links but keep the text
+        text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
 
         # Remove escaped characters
         text = text.replace("\\*", "*")
         text = text.replace("\\_", "_")
         text = text.replace("\\`", "`")
+        text = text.replace("\\#", "#")
+        text = text.replace("\\[", "[")
+        text = text.replace("\\]", "]")
+        text = text.replace("\\(", "(")
+        text = text.replace("\\)", ")")
+
+        # Clean up extra whitespace
+        text = re.sub(r"\n\s*\n", "\n\n", text)  # Multiple newlines to double newlines
+        text = text.strip()
+
+        return text
+
+    def _escape_markdown(self, text: str) -> str:
+        """Escape special Markdown characters for safe display"""
+        if not text:
+            return ""
+
+        # Convert to string if not already
+        text = str(text)
+
+        # Escape only the most problematic Markdown characters
+        # These are the ones that most commonly cause parsing errors
+        text = text.replace("_", "\\_")
+        text = text.replace("*", "\\*")
+        text = text.replace("`", "\\`")
+        text = text.replace("[", "\\[")
+        text = text.replace("]", "\\]")
 
         return text
 
@@ -120,7 +160,7 @@ Example questions:
 
                         if result.get("success"):
                             # Format response for successful request
-                            reply_message = f"✅ *Result:*\n"
+                            reply_message = "✅ *Result:*\n"
 
                             # Add data if available
                             if result.get("data") and len(result["data"]) > 0:
@@ -131,7 +171,10 @@ Example questions:
                                 for i, row in enumerate(result["data"][:3]):  # First 3 records
                                     reply_message += f"🔹 Record {i+1}:\n"
                                     for key, value in row.items():
-                                        reply_message += f"   • {key}: {value}\n"
+                                        # Escape special Markdown characters in values
+                                        safe_key = self._escape_markdown(key)
+                                        safe_value = self._escape_markdown(value)
+                                        reply_message += f"   • {safe_key}: {safe_value}\n"
                                     reply_message += "\n"
 
                                 if data_count > 3:
@@ -139,12 +182,13 @@ Example questions:
 
                             # Add explanation if available
                             if result.get("explanation"):
-                                reply_message += f"💬 *Explanation:*\n{result['explanation']}\n\n"
+                                # Escape special characters in explanation
+                                safe_explanation = self._escape_markdown(result["explanation"])
+                                reply_message += f"💬 *Explanation:*\n{safe_explanation}\n\n"
 
                             # Add SQL query
                             if result.get("sql_query"):
-                                # For SQL code blocks, we don't need to escape characters inside ```
-                                # because they are treated as literal text
+                                # SQL code blocks don't need escaping inside ```
                                 sql_query = result["sql_query"]
                                 reply_message += f"📝 *SQL Query:*\n```sql\n{sql_query}\n```\n\n"
 
@@ -153,8 +197,10 @@ Example questions:
                                 reply_message += f"⏱️ Execution time: {result['execution_time']:.2f}s"
 
                         else:
-                            # Handle API error
-                            reply_message = f"❌ *Error:*\n{result.get('message', 'Unknown error')}"
+                            # Handle API error - escape error message
+                            error_message = result.get("message", "Unknown error")
+                            safe_error = self._escape_markdown(error_message)
+                            reply_message = f"❌ *Error:*\n{safe_error}"
 
                         # Send result as new message
                         logger.info("Sending result message...")
