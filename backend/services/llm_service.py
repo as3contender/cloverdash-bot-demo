@@ -101,6 +101,8 @@ class LLMService:
 SELECT name, email FROM users WHERE created_at > '2023-01-01';
 ```
 Этот запрос выбирает имена и email всех пользователей, созданных после 1 января 2023 года.
+
+Ответ выводи на английском языке.
 """
         return prompt
 
