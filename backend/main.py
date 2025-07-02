@@ -5,9 +5,10 @@ import uvicorn
 from contextlib import asynccontextmanager
 
 from config.settings import settings
+from services.app_database import app_database_service
+from services.data_database import data_database_service
+from services.user_service import user_service
 from api.routes import router
-from services.database import database_service
-from services.llm_service import llm_service
 
 
 # Настройка логирования
@@ -25,42 +26,47 @@ async def lifespan(app: FastAPI):
     """
     Управление жизненным циклом приложения
     """
-    # Startup
-    logger.info("Starting CloverdashBot Backend...")
-
     try:
-        # Инициализируем подключение к базе данных
-        await database_service.initialize()
-        logger.info("Database service initialized")
+        # Инициализация базы данных приложения (пользователи, история, настройки)
+        logger.info("Initializing application database...")
+        await app_database_service.initialize()
+
+        # Создание таблиц приложения
+        await user_service.create_user_table()
+
+        # Инициализация базы данных пользовательских данных
+        logger.info("Initializing data database...")
+        await data_database_service.initialize()
+
+        logger.info("Application startup completed successfully")
+
+        yield
+
     except Exception as e:
-        logger.warning(f"Database initialization failed: {str(e)}")
-        logger.warning("Application will continue without database connection")
+        logger.error(f"Failed to initialize application: {e}")
+        raise
+    finally:
+        # Закрытие подключений при завершении работы
+        logger.info("Shutting down application...")
 
-    # Инициализируем LLM сервис (уже инициализирован при импорте)
-    logger.info("LLM service ready")
+        try:
+            await app_database_service.close()
+        except Exception as e:
+            logger.error(f"Error closing application database: {e}")
 
-    logger.info("Backend startup completed")
+        try:
+            await data_database_service.close()
+        except Exception as e:
+            logger.error(f"Error closing data database: {e}")
 
-    yield
-
-    # Shutdown
-    logger.info("Shutting down CloverdashBot Backend...")
-
-    # Закрываем подключение к базе данных
-    try:
-        await database_service.close()
-        logger.info("Database connections closed")
-    except Exception as e:
-        logger.error(f"Error closing database connections: {str(e)}")
-
-    logger.info("Backend shutdown completed")
+        logger.info("Application shutdown completed")
 
 
 # Создаем приложение FastAPI
 app = FastAPI(
     title=settings.api_title,
     version=settings.api_version,
-    description="Backend API для CloverdashBot - телеграм-бот для работы с базой данных через естественный язык",
+    description="Backend API для CloverdashBot с разделенными базами данных",
     lifespan=lifespan,
 )
 
@@ -75,6 +81,20 @@ app.add_middleware(
 
 # Подключаем роуты
 app.include_router(router)
+
+
+# Корневой endpoint
+@app.get("/")
+async def root():
+    """Корневой endpoint"""
+    return {
+        "message": "CloverdashBot Backend API",
+        "version": settings.api_version,
+        "databases": {
+            "application_db": app_database_service.is_connected,
+            "data_db": data_database_service.is_connected,
+        },
+    }
 
 
 if __name__ == "__main__":

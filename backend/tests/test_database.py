@@ -2,8 +2,8 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 import asyncpg
 
-from services.database import DatabaseService, database_service
-from models.schemas import DatabaseQueryResult
+from services.data_database import data_database_service
+from models.database import DatabaseQueryResult
 
 
 @pytest.mark.database

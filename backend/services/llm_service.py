@@ -5,10 +5,11 @@ import re
 import logging
 from typing import Optional, Dict, Any
 
-from config.settings import settings, DB_SCHEMA_CONTEXT
-from models.schemas import LLMQueryRequest, LLMQueryResponse
+from config.settings import settings
+from services.data_database import data_database_service
+from models.llm import LLMQueryResponse
 
-from loguru import logger
+logger = logging.getLogger(__name__)
 
 
 class LLMService:
@@ -38,7 +39,7 @@ class LLMService:
 
         try:
             # Создаем промпт для генерации SQL
-            prompt = self._create_sql_prompt(natural_query)
+            prompt = await self._create_sql_prompt(natural_query)
 
             # Отправляем запрос к OpenAI
             response = self.llm.invoke(prompt)
@@ -55,10 +56,7 @@ class LLMService:
             execution_time = time.time() - start_time
 
             result = LLMQueryResponse(
-                sql_query=sql_query,
-                explanation=self._clean_markdown(response.content),
-                execution_time=execution_time,
-                model_used=settings.openai_model,
+                sql_query=sql_query, explanation=self._clean_markdown(response.content), execution_time=execution_time
             )
 
             logger.info(f"SQL query generated successfully in {execution_time:.2f}s")
@@ -70,27 +68,34 @@ class LLMService:
             logger.error(f"LLM query generation failed after {execution_time:.2f}s: {str(e)}")
             raise Exception(f"Ошибка генерации SQL запроса: {str(e)}")
 
-    def _create_sql_prompt(self, natural_query: str) -> str:
+    async def _create_sql_prompt(self, natural_query: str) -> str:
         """Создает промпт для генерации SQL запроса"""
+
+        # Получаем актуальную схему базы данных
+        try:
+            db_schema = await self._get_database_schema()
+            schema_description = self._format_schema_for_prompt(db_schema)
+        except Exception as e:
+            logger.warning(f"Failed to get database schema: {e}")
+            schema_description = "Схема базы данных недоступна. Используйте стандартные имена таблиц."
+
         prompt = f"""
 Ты - эксперт по SQL запросам. На основе описания схемы базы данных и пользовательского запроса на естественном языке, сгенерируй корректный SQL запрос.
 
-ИМЯ ТАБЛИЦЫ: demo1.bills_view
-ОПИСАНИЕ ТАБЛИЦЫ: таблица чеков. Представление, содержащее все чеки из базы данных.
-
-ОПИСАНИЕ ПОЛЕЙ ТАБЛИЦЫ:
-{DB_SCHEMA_CONTEXT}
+СХЕМА БАЗЫ ДАННЫХ:
+{schema_description}
 
 ЗАПРОС ПОЛЬЗОВАТЕЛЯ: {natural_query}
 
 ИНСТРУКЦИИ:
 1. Сгенерируй только SQL запрос SELECT (никаких UPDATE, DELETE, INSERT, DROP)
-2. Используй именя колонок из описания колонок таблицы.
+2. Используй имена колонок из описания схемы базы данных.
 3. Используй только таблицы и колонки из предоставленной схемы
 4. Запрос должен быть валидным PostgreSQL
 5. Если запрос невозможно выполнить с данной схемой, объясни почему
-5. Не используй подзапросы без необходимости
-6. Используй корректные типы данных
+6. Не используй подзапросы без необходимости
+7. Используй корректные типы данных
+8. Добавляй разумные ограничения (LIMIT) для больших результатов
 
 ОТВЕТ ДОЛЖЕН СОДЕРЖАТЬ:
 - SQL запрос в блоке ```sql
@@ -98,13 +103,61 @@ class LLMService:
 
 ПРИМЕР ОТВЕТА:
 ```sql
-SELECT name, email FROM users WHERE created_at > '2023-01-01';
+SELECT name, email FROM users WHERE created_at > '2023-01-01' LIMIT 100;
 ```
-Этот запрос выбирает имена и email всех пользователей, созданных после 1 января 2023 года.
+Этот запрос выбирает имена и email всех пользователей, созданных после 1 января 2023 года, с ограничением до 100 записей.
 
-Ответ выводи на английском языке.
+Ответ выводи на русском языке.
 """
         return prompt
+
+    async def _get_database_schema(self) -> Dict[str, Any]:
+        """Получение схемы базы данных пользовательских данных"""
+        try:
+            if data_database_service.is_connected:
+                # Получаем схему со всеми представлениями и схемами
+                return await data_database_service.get_database_schema(include_views=True, schema_name=None)
+            else:
+                # Возвращаем схему из контекста, если база недоступна
+                return data_database_service.get_schema_context()
+        except Exception as e:
+            logger.warning(f"Failed to get database schema: {e}")
+            return {}
+
+    def _format_schema_for_prompt(self, db_schema: Dict[str, Any]) -> str:
+        """Форматирует схему базы данных для промпта"""
+        if not db_schema:
+            return "Схема базы данных недоступна."
+
+        schema_text = "ДОСТУПНЫЕ ОБЪЕКТЫ БАЗЫ ДАННЫХ:\n\n"
+
+        for table_name, table_info in db_schema.items():
+            object_type = table_info.get("object_type", "table")
+            schema_name = table_info.get("schema_name", "public")
+
+            # Показываем тип объекта (таблица или представление)
+            object_label = "ПРЕДСТАВЛЕНИЕ" if object_type == "view" else "ТАБЛИЦА"
+            full_name = f"{schema_name}.{table_name}" if schema_name != "public" else table_name
+
+            schema_text += f"{object_label}: {full_name}\n"
+            if "description" in table_info:
+                schema_text += f"ОПИСАНИЕ: {table_info['description']}\n"
+
+            schema_text += "КОЛОНКИ:\n"
+            for column in table_info.get("columns", []):
+                col_name = column.get("name", "")
+                # Используем datatype из описаний, если доступен, иначе базовый type
+                col_type = column.get("datatype", column.get("type", ""))
+                col_desc = column.get("description", "")
+                nullable = " (может быть NULL)" if column.get("nullable") else ""
+
+                schema_text += f"  - {col_name} ({col_type}){nullable}"
+                if col_desc:
+                    schema_text += f" - {col_desc}"
+                schema_text += "\n"
+            schema_text += "\n"
+
+        return schema_text
 
     def _extract_sql_from_response(self, response: str) -> str:
         """Извлекает SQL запрос из ответа LLM"""

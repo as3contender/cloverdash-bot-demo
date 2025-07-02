@@ -11,14 +11,23 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-3.5-turbo"
     openai_temperature: float = 0
 
-    # Database Configuration (можно использовать либо database_url, либо отдельные параметры)
-    database_url: Optional[str] = None
-    database_host: Optional[str] = None
-    database_port: Optional[int] = None
-    database_user: Optional[str] = None
-    database_password: Optional[str] = None
-    database_name: Optional[str] = None
-    database_echo: bool = False
+    # Application Database Configuration (для пользователей, истории, настроек)
+    app_database_url: Optional[str] = None
+    app_database_host: Optional[str] = None
+    app_database_port: Optional[int] = None
+    app_database_user: Optional[str] = None
+    app_database_password: Optional[str] = None
+    app_database_name: Optional[str] = None
+    app_database_echo: bool = False
+
+    # Data Database Configuration (для пользовательских данных и запросов)
+    data_database_url: Optional[str] = None
+    data_database_host: Optional[str] = None
+    data_database_port: Optional[int] = None
+    data_database_user: Optional[str] = None
+    data_database_password: Optional[str] = None
+    data_database_name: Optional[str] = None
+    data_database_echo: bool = False
 
     # API Configuration
     api_host: str = "0.0.0.0"
@@ -29,6 +38,11 @@ class Settings(BaseSettings):
     # Security
     allowed_origins: list[str] = ["*"]
 
+    # Authentication
+    secret_key: str = "your-secret-key-here-change-in-production"
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30 * 24 * 60  # 30 дней
+
     # Logging
     log_level: str = "INFO"
 
@@ -38,17 +52,43 @@ class Settings(BaseSettings):
         case_sensitive = False
         extra = "allow"  # Разрешаем дополнительные поля
 
-    def get_database_url(self) -> str:
-        """Получаем URL базы данных из настроек"""
-        if self.database_url:
-            return self.database_url
+    def get_app_database_url(self) -> str:
+        """Получаем URL базы данных приложения из настроек"""
+        if self.app_database_url:
+            return self.app_database_url
         elif all(
-            [self.database_host, self.database_port, self.database_user, self.database_password, self.database_name]
+            [
+                self.app_database_host,
+                self.app_database_port,
+                self.app_database_user,
+                self.app_database_password,
+                self.app_database_name,
+            ]
         ):
-            return f"postgresql://{self.database_user}:{self.database_password}@{self.database_host}:{self.database_port}/{self.database_name}"
+            return f"postgresql://{self.app_database_user}:{self.app_database_password}@{self.app_database_host}:{self.app_database_port}/{self.app_database_name}"
         else:
-            # Возвращаем тестовый URL по умолчанию
-            return "postgresql://test:test@localhost:5432/test_db"
+            raise ValueError(
+                "Application database configuration is incomplete. Please set either APP_DATABASE_URL or all individual APP_DATABASE_* parameters."
+            )
+
+    def get_data_database_url(self) -> str:
+        """Получаем URL базы данных пользовательских данных из настроек"""
+        if self.data_database_url:
+            return self.data_database_url
+        elif all(
+            [
+                self.data_database_host,
+                self.data_database_port,
+                self.data_database_user,
+                self.data_database_password,
+                self.data_database_name,
+            ]
+        ):
+            return f"postgresql://{self.data_database_user}:{self.data_database_password}@{self.data_database_host}:{self.data_database_port}/{self.data_database_name}"
+        else:
+            raise ValueError(
+                "Data database configuration is incomplete. Please set either DATA_DATABASE_URL or all individual DATA_DATABASE_* parameters."
+            )
 
 
 # Создаем глобальный экземпляр настроек

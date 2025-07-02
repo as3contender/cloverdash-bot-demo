@@ -21,6 +21,38 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 class CloverdashBot:
     def __init__(self):
         self.session = None
+        self.user_tokens = {}  # Кэш токенов пользователей
+
+    async def get_or_create_user_token(self, user_id: str, user_data: dict) -> str:
+        """Получает или создает токен для пользователя"""
+        if user_id in self.user_tokens:
+            return self.user_tokens[user_id]
+
+        try:
+            # Аутентификация через Telegram
+            auth_payload = {
+                "telegram_id": user_id,
+                "telegram_username": user_data.get("username"),
+                "first_name": user_data.get("first_name"),
+                "last_name": user_data.get("last_name"),
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{BACKEND_URL}/auth/telegram", json=auth_payload) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        token = result["access_token"]
+                        self.user_tokens[user_id] = token
+                        logger.info(f"User {user_id} authenticated successfully")
+                        return token
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Authentication failed for user {user_id}: {error_text}")
+                        raise Exception(f"Authentication failed: {response.status}")
+
+        except Exception as e:
+            logger.error(f"Error authenticating user {user_id}: {e}")
+            raise
 
     def _clean_markdown(self, text: str) -> str:
         """Remove Markdown formatting from text for plain text display"""
@@ -128,7 +160,10 @@ Example questions:
         """Handler for text messages (user questions)"""
         try:
             user_question = update.message.text
-            user_id = str(update.effective_user.id)
+            user = update.effective_user
+            user_id = str(user.id)
+
+            user_data = {"username": user.username, "first_name": user.first_name, "last_name": user.last_name}
 
             logger.info(f"=== STARTING QUERY PROCESSING ===")
             logger.info(f"User ID: {user_id}")
@@ -145,13 +180,18 @@ Example questions:
             raise e
 
         try:
+            logger.info("Getting user authentication token...")
+            # Получаем токен аутентификации для пользователя
+            token = await self.get_or_create_user_token(user_id, user_data)
+
             logger.info("Starting backend API request...")
             # Send request to backend API
             async with aiohttp.ClientSession() as session:
                 payload = {"query": user_question, "user_id": user_id}
+                headers = {"Authorization": f"Bearer {token}"}
                 logger.info(f"Payload: {payload}")
 
-                async with session.post(f"{BACKEND_URL}/query", json=payload) as response:
+                async with session.post(f"{BACKEND_URL}/database/query", json=payload, headers=headers) as response:
                     logger.info(f"Backend response status: {response.status}")
 
                     if response.status == 200:
@@ -213,6 +253,13 @@ Example questions:
                             clean_message = self._clean_markdown(reply_message)
                             result_msg = await update.message.reply_text(clean_message)
                             logger.info(f"Result message sent without markdown, ID: {result_msg.message_id}")
+
+                    elif response.status == 401:
+                        # Token expired or invalid, remove from cache and retry
+                        logger.info(f"Token expired for user {user_id}, removing from cache")
+                        self.user_tokens.pop(user_id, None)
+                        error_msg = await update.message.reply_text("🔄 Authentication expired, please try again.")
+                        logger.info(f"Auth error message sent with ID: {error_msg.message_id}")
 
                     else:
                         error_text = await response.text()
