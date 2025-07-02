@@ -143,6 +143,8 @@ Examples:
 
 /start - Start working with the bot
 /help - Show this message
+/tables - Show available tables and views
+/sample <table_name> - Show sample data (first 3 records) from a table
 
 📊 How to use:
 Just write your question about the data in natural language, and I'll find the answer!
@@ -152,9 +154,197 @@ Example questions:
 • "What is the sales volume in January?"
 • "Show list of tables in the database"
 
+Example sample commands:
+• /sample bills_view
+• /sample demo1.bills_view
+• /sample public.users
+
 ⚠️ Important: I only work with SELECT queries for data security.
         """
         await update.message.reply_text(help_message)
+
+    async def tables_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handler for /tables command to show available tables"""
+        try:
+            user = update.effective_user
+            user_id = str(user.id)
+
+            logger.info(f"Tables list requested by user {user_id}")
+
+            # Send processing message
+            processing_msg = await update.message.reply_text("🔍 Getting list of available tables...")
+
+            user_data = {"username": user.username, "first_name": user.first_name, "last_name": user.last_name}
+
+            # Get authentication token
+            token = await self.get_or_create_user_token(user_id, user_data)
+
+            # Make API request to get available tables
+            async with aiohttp.ClientSession() as session:
+                headers = {"Authorization": f"Bearer {token}"}
+
+                async with session.get(f"{BACKEND_URL}/database/tables", headers=headers) as response:
+
+                    if response.status == 200:
+                        result = await response.json()
+
+                        if result.get("success") and result.get("tables"):
+                            tables = result["tables"]
+                            database_name = result.get("database_name", "unknown")
+
+                            # Format tables list response
+                            reply_message = f"📊 *Available tables in {database_name}*\n\n"
+                            reply_message += f"🔢 Total: {len(tables)} objects\n\n"
+
+                            # Group by schema
+                            schemas = {}
+                            for table in tables:
+                                schema = table["schema_name"]
+                                if schema not in schemas:
+                                    schemas[schema] = {"tables": [], "views": []}
+
+                                if table["object_type"] == "view":
+                                    schemas[schema]["views"].append(table)
+                                else:
+                                    schemas[schema]["tables"].append(table)
+
+                            # Show each schema
+                            for schema_name, objects in schemas.items():
+                                reply_message += f"🗂️ *Schema: {schema_name}*\n"
+
+                                # Show tables
+                                if objects["tables"]:
+                                    reply_message += f"📋 Tables ({len(objects['tables'])}):\n"
+                                    for table in objects["tables"]:
+                                        safe_name = self._escape_markdown(table["full_name"])
+                                        reply_message += f"   • `{safe_name}`\n"
+
+                                # Show views
+                                if objects["views"]:
+                                    reply_message += f"👁️ Views ({len(objects['views'])}):\n"
+                                    for view in objects["views"]:
+                                        safe_name = self._escape_markdown(view["full_name"])
+                                        reply_message += f"   • `{safe_name}`\n"
+
+                                reply_message += "\n"
+
+                            reply_message += "💡 *Usage:*\n"
+                            reply_message += "• `/sample <table_name>` - show sample data\n"
+                            reply_message += "• Ask questions in natural language!"
+
+                        else:
+                            reply_message = "📊 No tables found in the database"
+
+                    elif response.status == 401:
+                        # Token expired
+                        self.user_tokens.pop(user_id, None)
+                        reply_message = "🔄 Authentication expired, please try again."
+
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Tables API error: {response.status} - {error_text}")
+                        reply_message = "❌ Error getting tables list. Please try again."
+
+            # Send result
+            try:
+                await update.message.reply_text(reply_message, parse_mode="Markdown")
+            except Exception as markdown_error:
+                logger.error(f"Markdown parsing error in tables: {markdown_error}")
+                # Send as plain text if markdown fails
+                clean_message = self._clean_markdown(reply_message)
+                await update.message.reply_text(clean_message)
+
+        except Exception as e:
+            logger.error(f"Error in tables_command: {e}")
+            await update.message.reply_text("❌ An error occurred getting tables list. Please try again.")
+
+    async def sample_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handler for /sample command to show sample data from table"""
+        try:
+            user = update.effective_user
+            user_id = str(user.id)
+
+            # Get table name from command arguments
+            if not context.args:
+                await update.message.reply_text(
+                    "❌ Please specify a table name!\n\n" "Usage: /sample <table_name>\n" "Example: /sample bills_view"
+                )
+                return
+
+            table_name = " ".join(context.args)  # Handle table names with spaces/dots
+
+            logger.info(f"Sample command requested by user {user_id} for table: {table_name}")
+
+            # Send processing message
+            processing_msg = await update.message.reply_text(f"🔍 Getting sample data from `{table_name}`...")
+
+            user_data = {"username": user.username, "first_name": user.first_name, "last_name": user.last_name}
+
+            # Get authentication token
+            token = await self.get_or_create_user_token(user_id, user_data)
+
+            # Make API request to get sample data
+            async with aiohttp.ClientSession() as session:
+                headers = {"Authorization": f"Bearer {token}"}
+
+                # Use the table sample endpoint from backend
+                async with session.get(
+                    f"{BACKEND_URL}/database/table/{table_name}/sample?limit=3", headers=headers
+                ) as response:
+
+                    if response.status == 200:
+                        result = await response.json()
+
+                        if result.get("success") and result.get("data"):
+                            data = result["data"]
+
+                            # Format sample data response
+                            reply_message = f"📊 *Sample data from `{table_name}`*\n\n"
+                            reply_message += f"🔢 Records shown: {len(data)}/3\n\n"
+
+                            # Show each record
+                            for i, row in enumerate(data):
+                                reply_message += f"🔹 *Record {i+1}:*\n"
+                                for key, value in row.items():
+                                    # Escape special Markdown characters
+                                    safe_key = self._escape_markdown(str(key))
+                                    safe_value = self._escape_markdown(str(value) if value is not None else "NULL")
+                                    reply_message += f"   • {safe_key}: `{safe_value}`\n"
+                                reply_message += "\n"
+
+                        elif result.get("success") and not result.get("data"):
+                            reply_message = f"📊 Table `{table_name}` is empty (no records found)"
+
+                        else:
+                            error_msg = result.get("message", "Unknown error")
+                            safe_error = self._escape_markdown(error_msg)
+                            reply_message = f"❌ *Error:*\n{safe_error}"
+
+                    elif response.status == 404:
+                        reply_message = f"❌ Table `{table_name}` not found or not accessible"
+
+                    elif response.status == 401:
+                        # Token expired
+                        self.user_tokens.pop(user_id, None)
+                        reply_message = "🔄 Authentication expired, please try again."
+
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Sample API error: {response.status} - {error_text}")
+                        reply_message = "❌ Error getting sample data. Please try again."
+
+            # Send result
+            try:
+                await update.message.reply_text(reply_message, parse_mode="Markdown")
+            except Exception as markdown_error:
+                logger.error(f"Markdown parsing error in sample: {markdown_error}")
+                # Send as plain text if markdown fails
+                clean_message = self._clean_markdown(reply_message)
+                await update.message.reply_text(clean_message)
+
+        except Exception as e:
+            logger.error(f"Error in sample_command: {e}")
+            await update.message.reply_text("❌ An error occurred getting sample data. Please try again.")
 
     async def handle_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handler for text messages (user questions)"""
@@ -321,6 +511,8 @@ def main():
     # Add handlers
     application.add_handler(CommandHandler("start", bot.start_command))
     application.add_handler(CommandHandler("help", bot.help_command))
+    application.add_handler(CommandHandler("tables", bot.tables_command))
+    application.add_handler(CommandHandler("sample", bot.sample_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_query))
     application.add_error_handler(bot.error_handler)
 

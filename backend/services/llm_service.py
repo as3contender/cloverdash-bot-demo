@@ -17,13 +17,21 @@ class LLMService:
 
     def __init__(self):
         """Инициализация LLM сервиса"""
-        self.llm = ChatOpenAI(
-            model_name=settings.openai_model,
-            temperature=settings.openai_temperature,
-            openai_api_key=settings.openai_api_key,
-        )
+        try:
+            self.llm = ChatOpenAI(
+                model_name=settings.openai_model,
+                temperature=settings.openai_temperature,
+                openai_api_key=settings.openai_api_key,
+            )
+            # Проверяем, что API ключ настроен
+            self.is_configured = bool(settings.openai_api_key and settings.openai_api_key.strip())
 
-        logger.info(f"LLM Service initialized with model: {settings.openai_model}")
+            logger.info(f"LLM Service initialized with model: {settings.openai_model}")
+            logger.info(f"LLM Service configured: {self.is_configured}")
+        except Exception as e:
+            logger.error(f"Failed to initialize LLM Service: {e}")
+            self.is_configured = False
+            self.llm = None
 
     async def generate_sql_query(self, natural_query: str) -> LLMQueryResponse:
         """
@@ -38,6 +46,10 @@ class LLMService:
         start_time = time.time()
 
         try:
+            # Проверяем, что LLM сервис настроен
+            if not self.is_configured or not self.llm:
+                raise Exception("LLM сервис не настроен или недоступен")
+
             # Создаем промпт для генерации SQL
             prompt = await self._create_sql_prompt(natural_query)
 
@@ -107,19 +119,27 @@ SELECT name, email FROM users WHERE created_at > '2023-01-01' LIMIT 100;
 ```
 Этот запрос выбирает имена и email всех пользователей, созданных после 1 января 2023 года, с ограничением до 100 записей.
 
-Ответ выводи на русском языке.
+Ответ выводи на английском языке.
 """
         return prompt
 
     async def _get_database_schema(self) -> Dict[str, Any]:
         """Получение схемы базы данных пользовательских данных"""
         try:
-            if data_database_service.is_connected:
-                # Получаем схему со всеми представлениями и схемами
-                return await data_database_service.get_database_schema(include_views=True, schema_name=None)
+            # Импортируем здесь, чтобы избежать циклических импортов
+            from services.app_database import app_database_service
+            from services.data_database import data_database_service
+
+            if app_database_service.is_connected and data_database_service.is_connected:
+                # Получаем имя базы данных
+                database_name = data_database_service.get_database_name()
+                # Получаем схему со всеми представлениями и схемами из app_database
+                return await app_database_service.get_database_schema(
+                    database_name=database_name, include_views=True, schema_name=None
+                )
             else:
-                # Возвращаем схему из контекста, если база недоступна
-                return data_database_service.get_schema_context()
+                logger.warning("Databases not connected - no schema available")
+                return {}
         except Exception as e:
             logger.warning(f"Failed to get database schema: {e}")
             return {}
@@ -257,6 +277,11 @@ SELECT name, email FROM users WHERE created_at > '2023-01-01' LIMIT 100;
             bool: True если подключение успешно, False в противном случае
         """
         try:
+            # Проверяем, что сервис настроен
+            if not self.is_configured or not self.llm:
+                logger.warning("LLM service not configured")
+                return False
+
             test_prompt = "Напиши простой SQL запрос для выбора всех записей из таблицы test"
             response = self.llm.invoke(test_prompt)
             return bool(response and response.content)
@@ -276,7 +301,8 @@ SELECT name, email FROM users WHERE created_at > '2023-01-01' LIMIT 100;
             "service": "LLM Service",
             "model": settings.openai_model,
             "temperature": settings.openai_temperature,
-            "status": "active",
+            "configured": self.is_configured,
+            "status": "active" if self.is_configured else "not configured",
         }
 
 

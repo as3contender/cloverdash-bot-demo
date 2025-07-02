@@ -259,6 +259,199 @@ class AppDatabaseService:
             logger.error(f"Failed to delete object description: {str(e)}")
             return False
 
+    async def get_user_accessible_tables(self, user_id: str, database_name: str) -> List[Dict[str, Any]]:
+        """Получение списка доступных таблиц для пользователя из database_descriptions
+        с учетом прав пользователя из user_permissions (если таблица существует)"""
+        try:
+            # Сначала проверяем, существует ли таблица user_permissions
+            permissions_exist = await self._check_user_permissions_table_exists()
+
+            if permissions_exist:
+                # Если таблица прав существует, получаем таблицы с учетом прав
+                query = """
+                SELECT DISTINCT 
+                    dd.database_name,
+                    dd.schema_name,
+                    dd.table_name,
+                    dd.object_type,
+                    dd.table_description,
+                    dd.created_at,
+                    dd.updated_at
+                FROM database_descriptions dd
+                LEFT JOIN table_permissions tp ON 
+                    dd.database_name = tp.database_name AND
+                    dd.schema_name = tp.schema_name AND
+                    dd.table_name = tp.table_name AND
+                    tp.user_id = $1
+                WHERE dd.database_name = $2
+                AND (
+                    tp.user_id IS NOT NULL  -- Пользователь имеет явные права
+                    OR NOT EXISTS (         -- Или для этой таблицы нет никаких ограничений
+                        SELECT 1 FROM table_permissions tp2 
+                        WHERE tp2.database_name = dd.database_name 
+                        AND tp2.schema_name = dd.schema_name 
+                        AND tp2.table_name = dd.table_name
+                    )
+                )
+                ORDER BY dd.schema_name, dd.table_name
+                """
+
+                result = await self.execute_query(query, [user_id, database_name])
+            else:
+                # Если таблицы прав нет, возвращаем все таблицы
+                query = """
+                SELECT 
+                    database_name,
+                    schema_name,
+                    table_name,
+                    object_type,
+                    table_description,
+                    created_at,
+                    updated_at
+                FROM database_descriptions
+                WHERE database_name = $1
+                ORDER BY schema_name, table_name
+                """
+
+                result = await self.execute_query(query, [database_name])
+
+            # Форматируем результат
+            tables = []
+            for row in result.data:
+                table_info = {
+                    "full_name": f"{row['schema_name']}.{row['table_name']}",
+                    "schema_name": row["schema_name"],
+                    "table_name": row["table_name"],
+                    "object_type": row["object_type"],
+                    "description": row["table_description"],
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                    "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                }
+                tables.append(table_info)
+
+            logger.info(f"Found {len(tables)} accessible tables for user {user_id} in database {database_name}")
+            return tables
+
+        except Exception as e:
+            logger.error(f"Failed to get accessible tables for user {user_id}: {str(e)}")
+            return []
+
+    async def _check_user_permissions_table_exists(self) -> bool:
+        """Проверяет, существует ли таблица table_permissions для разрешений на конкретные таблицы"""
+        try:
+            query = """
+            SELECT COUNT(*) 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'table_permissions'
+            """
+
+            result = await self.execute_query(query)
+            exists = result.data and result.data[0]["count"] > 0
+
+            if exists:
+                logger.info("Table permissions table found - using permission-based access")
+            else:
+                logger.info("Table permissions table not found - allowing access to all tables")
+
+            return exists
+
+        except Exception as e:
+            logger.warning(f"Error checking table permissions table: {str(e)}")
+            return False
+
+    async def get_database_schema(
+        self, database_name: str, include_views: bool = True, schema_name: str = "public"
+    ) -> Dict[str, Any]:
+        """Получение схемы базы данных из database_descriptions"""
+        try:
+            schema = {}
+
+            # Получаем все описания из database_descriptions
+            if schema_name is None:
+                saved_descriptions = await self.get_all_table_descriptions(database_name=database_name)
+            else:
+                saved_descriptions = await self.get_all_table_descriptions(
+                    database_name=database_name, schema_name=schema_name
+                )
+
+            logger.info(f"Found {len(saved_descriptions)} descriptions in database_descriptions")
+
+            # Строим схему на основе сохраненных описаний
+            for key, description in saved_descriptions.items():
+                # key format: "database.schema.table"
+                parts = key.split(".")
+                if len(parts) >= 3:
+                    table_name = parts[-1]  # последняя часть - имя таблицы
+                    table_schema = parts[-2]  # предпоследняя - схема
+
+                    # Парсим JSON если description - строка
+                    if isinstance(description, str):
+                        try:
+                            description = json.loads(description)
+                        except (json.JSONDecodeError, TypeError):
+                            logger.warning(f"Failed to parse description JSON for {key}: {description}")
+                            description = {"description": str(description)}
+
+                    object_type = description.get("object_type", "table")
+
+                    # Фильтруем представления если нужно
+                    if not include_views and object_type == "view":
+                        continue
+
+                    # Фильтруем по схеме если указана
+                    if schema_name is not None and table_schema != schema_name:
+                        continue
+
+                    schema[table_name] = {
+                        "columns": [],
+                        "description": description.get("description", f"User data {object_type}"),
+                        "object_type": object_type,
+                        "schema_name": table_schema,
+                    }
+
+                    # Добавляем колонки из описания
+                    if "columns" in description:
+                        columns_desc = description["columns"]
+                        for col_name, col_info in columns_desc.items():
+                            if isinstance(col_info, dict):
+                                # Полная информация о колонке из column_descriptions.json
+                                column_data = {
+                                    "name": col_name,
+                                    "description": col_info.get("описание", ""),
+                                    "datatype": col_info.get("datatype", "character varying"),
+                                    "type": col_info.get("datatype", "character varying"),
+                                    "placeholder": col_info.get("placeholder", ""),
+                                    "tags": col_info.get("теги", ""),
+                                    "nullable": True,  # по умолчанию
+                                    "default": None,
+                                }
+                            else:
+                                # Простое описание как строка
+                                column_data = {
+                                    "name": col_name,
+                                    "description": str(col_info),
+                                    "datatype": "character varying",
+                                    "type": "character varying",
+                                    "nullable": True,
+                                    "default": None,
+                                }
+
+                            schema[table_name]["columns"].append(column_data)
+
+            tables_count = sum(1 for v in schema.values() if v.get("object_type") == "table")
+            views_count = sum(1 for v in schema.values() if v.get("object_type") == "view")
+            schema_info = "all schemas" if schema_name is None else f"{schema_name} schema"
+
+            logger.info(f"Retrieved schema from {schema_info}: {tables_count} tables, {views_count} views")
+            logger.info(f"All objects loaded from database_descriptions (curated data)")
+
+            return schema
+
+        except Exception as e:
+            logger.error(f"Failed to get database schema: {str(e)}")
+            raise Exception(f"Schema retrieval failed: {str(e)}")
+
     async def create_app_tables(self):
         """Создание таблиц приложения"""
         try:

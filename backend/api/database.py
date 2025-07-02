@@ -19,9 +19,12 @@ database_router = APIRouter(prefix="/database", tags=["Database"])
 @database_router.post("/query", response_model=QueryResponse)
 async def execute_query(request: QueryRequest, user_id: str = Depends(security_service.get_current_user_id)):
     """
-    Выполняет запрос к базе данных через LLM
+    Выполняет запрос к базе данных пользовательских данных через LLM
 
-    Требует аутентификации для доступа к базе данных.
+    Принимает запрос на естественном языке, конвертирует его в SQL через LLM,
+    и выполняет в базе данных пользовательских данных.
+
+    Требует аутентификации.
 
     Args:
         request: Запрос пользователя
@@ -30,12 +33,55 @@ async def execute_query(request: QueryRequest, user_id: str = Depends(security_s
     Returns:
         QueryResponse: Результат выполнения запроса
     """
-    try:
-        # Устанавливаем user_id из токена аутентификации
-        request.user_id = user_id
+    # Валидация входных данных
+    if not request.query or not request.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-        # Генерируем SQL запрос с помощью LLM
+    if len(request.query) > 2000:
+        raise HTTPException(status_code=400, detail="Query too long (max 2000 characters)")
+
+    # Проверяем на подозрительный контент
+    suspicious_patterns = [
+        "drop table",
+        "delete from",
+        "truncate",
+        "insert into",
+        "update set",
+        "create table",
+        "alter table",
+        "grant all",
+    ]
+
+    query_lower = request.query.lower()
+    for pattern in suspicious_patterns:
+        if pattern in query_lower:
+            logger.warning(f"Suspicious query attempt by user {user_id}: {request.query[:100]}")
+            raise HTTPException(status_code=400, detail="Query contains potentially dangerous content")
+
+    try:
+        if not data_database_service.is_connected:
+            raise HTTPException(status_code=503, detail="База данных недоступна")
+
+        if not llm_service.is_configured:
+            raise HTTPException(status_code=503, detail="LLM сервис недоступен")
+
+        # Получаем SQL запрос от LLM
         llm_response = await llm_service.generate_sql_query(request.query)
+
+        if not llm_response.sql_query:
+            # Если LLM не смог сгенерировать SQL
+            return QueryResponse(
+                success=False,
+                message="Не удалось понять запрос. Попробуйте переформулировать.",
+                sql_query=None,
+                explanation=llm_response.explanation,
+                data=[],
+                columns=[],
+                row_count=0,
+                execution_time=llm_response.execution_time,
+                llm_time=llm_response.execution_time,
+                db_time=0,
+            )
 
         # Выполняем SQL запрос в базе данных пользовательских данных
         db_result = await data_database_service.execute_query(llm_response.sql_query)
@@ -236,3 +282,51 @@ async def get_table_sample(
     except Exception as e:
         logger.error(f"Failed to get table sample for user {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Ошибка получения примера данных: {str(e)}")
+
+
+@database_router.get("/tables")
+async def get_available_tables(user_id: str = Depends(security_service.get_current_user_id)):
+    """
+    Получение списка доступных таблиц и представлений из database_descriptions
+
+    Учитывает права пользователя из таблицы table_permissions (если она существует).
+
+    Args:
+        user_id: ID аутентифицированного пользователя
+
+    Returns:
+        dict: Список доступных таблиц и представлений
+    """
+    try:
+        from services.app_database import app_database_service
+
+        if not app_database_service.is_connected:
+            raise HTTPException(status_code=503, detail="База описаний недоступна")
+
+        if not data_database_service.is_connected:
+            raise HTTPException(status_code=503, detail="База данных недоступна")
+
+        # Получаем имя базы данных
+        database_name = data_database_service.get_database_name()
+        logger.info(f"Getting tables for user {user_id} in database {database_name}")
+
+        # Получаем список доступных таблиц с учетом прав пользователя
+        tables = await app_database_service.get_user_accessible_tables(user_id=user_id, database_name=database_name)
+
+        logger.info(f"Retrieved {len(tables)} tables from get_user_accessible_tables")
+        for table in tables:
+            logger.info(f"Table: {table}")
+
+        logger.info(f"Available tables requested by user {user_id}: {len(tables)} tables")
+
+        return {
+            "success": True,
+            "message": "Список доступных таблиц получен успешно",
+            "database_name": database_name,
+            "tables": tables,
+            "total_count": len(tables),
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get available tables for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка получения списка таблиц: {str(e)}")
