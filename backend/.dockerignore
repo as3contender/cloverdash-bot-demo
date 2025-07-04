@@ -26,48 +26,81 @@ venv/
 env/
 ENV/
 .venv/
-.env/
+.env
 
-# IDE
+# IDE and editors
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.sublime-project
+.sublime-workspace
 
-# OS
+# OS files
 .DS_Store
 Thumbs.db
+*.tmp
+*.temp
 
 # Git
 .git/
 .gitignore
 
-# Docker
+# Docker files (not needed in container)
 Dockerfile
 .dockerignore
 
-# Testing
+# Testing and coverage
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
 .nox/
+.hypothesis/
+nosetests.xml
+coverage.xml
+*.cover
 
-# Logs
+# Development logs
 *.log
+logs/
 
-# Documentation
+# Development documentation (keep only essential docs)
 README.md
-*.md
+AUTH_README.md
+TABLE_DESCRIPTIONS_README.md
+DATABASE_SEPARATION.md
+DOCKER_SUMMARY.md
+QUICK_START.md
+docker-setup.md
+SECURITY_SETUP.md
 
-# Makefile
+# Development scripts and utilities (not needed in production)
+check_db_directly.py
+check_description.py
+add_view_description.py
+import_descriptions.py
+migrate_descriptions.py
+generate_secret_key.py
+
+# Environment and config examples
+env_example.txt
+.env.*
+.env.local
+
+# Development tools
 Makefile
+pytest.ini
 
-# Tests
+# Tests directory and test files
 tests/
 test_*.py
+*_test.py
 
-# Environment files
-.env
-.env.* 
+# Development data files
+column_descriptions.json
+
+# Docker compose files (handled separately)
+docker-compose.yml
+docker-compose.*.yml 

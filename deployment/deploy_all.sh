@@ -289,17 +289,18 @@ echo -e "${YELLOW}Backend API: $([ "$DEPLOY_BACKEND" = true ] && echo "✅ Will 
 echo -e "${YELLOW}Telegram Bot: $([ "$DEPLOY_BOT" = true ] && echo "✅ Will deploy" || echo "⏭️  Skipped")${NC}"
 echo ""
 
-# Prepare SSH command
-SSH_CMD="ssh"
+# Prepare SSH command with aggressive keep-alive settings
+SSH_BASE_OPTIONS="-o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o ConnectTimeout=60 -o TCPKeepAlive=yes"
+SSH_CMD="ssh $SSH_BASE_OPTIONS"
 if [ -n "$SSH_KEY" ] && [ "$SSH_KEY" != "" ]; then
     # Expand tilde in SSH key path and check if file exists
     SSH_KEY_EXPANDED=$(eval echo $SSH_KEY)
     if [ -f "$SSH_KEY_EXPANDED" ]; then
-        SSH_CMD="ssh -i $SSH_KEY_EXPANDED"
+        SSH_CMD="ssh $SSH_BASE_OPTIONS -i $SSH_KEY_EXPANDED"
         echo -e "${YELLOW}Using SSH key: $SSH_KEY${NC}"
     else
         echo -e "${YELLOW}⚠️  SSH key not found: $SSH_KEY, using default SSH configuration${NC}"
-        SSH_CMD="ssh"
+        SSH_CMD="ssh $SSH_BASE_OPTIONS"
     fi
 else
     echo -e "${YELLOW}Using default SSH configuration (no key specified)${NC}"
@@ -329,14 +330,14 @@ verify_docker_environment "$SSH_CMD" "$REMOTE_USER" "$REMOTE_HOST"
 echo ""
 
 # Check if .env files exist
-if [ "$DEPLOY_BACKEND" = true ] && [ ! -f "backend/.env" ]; then
+if [ "$DEPLOY_BACKEND" = true ] && [ ! -f "../backend/.env" ]; then
     echo -e "${RED}❌ Backend .env file not found${NC}"
     echo -e "${RED}Create backend/.env file with required configuration${NC}"
     echo -e "${RED}See backend/env_example.txt for reference${NC}"
     exit 1
 fi
 
-if [ "$DEPLOY_BOT" = true ] && [ ! -f "telegram-bot/.env" ]; then
+if [ "$DEPLOY_BOT" = true ] && [ ! -f "../telegram-bot/.env" ]; then
     echo -e "${RED}❌ Telegram bot .env file not found${NC}"
     echo -e "${RED}Create telegram-bot/.env file with required configuration${NC}"
     echo -e "${RED}Example: TELEGRAM_TOKEN=your_bot_token${NC}"
@@ -363,10 +364,10 @@ if [ "$DEPLOY_BACKEND" = true ]; then
     # Create backend deployment package
     echo -e "${YELLOW}📦 Creating backend deployment package...${NC}"
     
-    # Copy backend files
-    echo -e "${YELLOW}📁 Copying backend files...${NC}"
-    SCP_CMD=$(echo $SSH_CMD | sed 's/ssh/scp/')
-    $SCP_CMD -r backend/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_DEPLOY_DIR/
+    # Copy backend files (excluding development files)
+    echo -e "${YELLOW}📁 Copying backend files (optimized)...${NC}"
+    RSYNC_CMD=$(echo $SSH_CMD | sed 's/ssh/rsync -e ssh/')
+    $RSYNC_CMD -av --exclude-from=../.deployignore ../backend/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_DEPLOY_DIR/backend/
     
     # Modify .env for production
     echo -e "${YELLOW}⚙️  Configuring backend for production...${NC}"
@@ -389,15 +390,22 @@ if [ "$DEPLOY_BACKEND" = true ]; then
         
         echo "Docker and docker-compose are ready for deployment..."
         
-        # Build and start backend
+        # Build and start backend with timeout handling
         docker-compose down --remove-orphans 2>/dev/null || true
-        docker-compose build --no-cache
+        
+        echo "Building backend Docker image - this may take several minutes..."
+        timeout 600 docker-compose build --no-cache || {
+            echo "Build timeout or failed, trying without cache clear..."
+            docker-compose build
+        }
+        
+        echo "Starting backend services..."
         docker-compose up -d
         
         # Wait for backend to be ready
         echo "Waiting for backend to start..."
         for i in {1..30}; do
-            if curl -s http://localhost:8000/api/v1/health >/dev/null 2>&1; then
+            if curl -s http://localhost:8000/health/ >/dev/null 2>&1; then
                 echo "Backend is ready!"
                 break
             fi
@@ -406,7 +414,7 @@ if [ "$DEPLOY_BACKEND" = true ]; then
     "
     
     # Check if backend deployed successfully
-    if $SSH_CMD $REMOTE_USER@$REMOTE_HOST 'curl -s http://localhost:8000/api/v1/health >/dev/null 2>&1'; then
+    if $SSH_CMD $REMOTE_USER@$REMOTE_HOST 'curl -s http://localhost:8000/health/ >/dev/null 2>&1'; then
         echo -e "${GREEN}✅ Backend API deployed successfully${NC}"
     else
         echo -e "${RED}❌ Backend API deployment failed${NC}"
@@ -424,9 +432,9 @@ fi
 if [ "$DEPLOY_BOT" = true ]; then
     echo -e "${BLUE}🤖 Step 2: Deploying Telegram Bot...${NC}"
     
-    # Copy telegram-bot files
-    echo -e "${YELLOW}📁 Copying telegram-bot files...${NC}"
-    $SCP_CMD -r telegram-bot/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_DEPLOY_DIR/
+    # Copy telegram-bot files (excluding development files)
+    echo -e "${YELLOW}📁 Copying telegram-bot files (optimized)...${NC}"
+    $RSYNC_CMD -av --exclude-from=../.deployignore ../telegram-bot/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_DEPLOY_DIR/telegram-bot/
     
     # Configure bot for production
     echo -e "${YELLOW}⚙️  Configuring bot for production...${NC}"
@@ -438,7 +446,14 @@ if [ "$DEPLOY_BOT" = true ]; then
         
         # Build and start bot
         docker-compose down --remove-orphans 2>/dev/null || true
-        docker-compose build --no-cache
+        
+        echo "Building telegram bot Docker image..."
+        timeout 300 docker-compose build --no-cache || {
+            echo "Build timeout or failed, trying without cache clear..."
+            docker-compose build
+        }
+        
+        echo "Starting telegram bot services..."
         docker-compose up -d
         
         # Wait for bot to start
@@ -470,7 +485,7 @@ if [ "$DEPLOY_BACKEND" = true ]; then
     echo -e "${YELLOW}🔗 Backend API:${NC}"
     echo -e "   • API: http://$REMOTE_HOST:8000"
     echo -e "   • Docs: http://$REMOTE_HOST:8000/docs"
-    echo -e "   • Health: http://$REMOTE_HOST:8000/api/v1/health"
+    echo -e "   • Health: http://$REMOTE_HOST:8000/health/"
 fi
 
 if [ "$DEPLOY_BOT" = true ]; then

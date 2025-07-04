@@ -206,7 +206,7 @@ source deploy.env 2>/dev/null || true
 REMOTE_HOST=${REMOTE_HOST:-64.227.69.138}
 
 # Health check
-curl http://$REMOTE_HOST:8000/api/v1/health
+curl http://$REMOTE_HOST:8000/health/
 
 # API документация
 open http://$REMOTE_HOST:8000/docs
@@ -352,7 +352,7 @@ ssh -i $SSH_KEY_PATH $REMOTE_USER@$REMOTE_HOST \
 
 # Проверьте доступность Backend API
 ssh -i $SSH_KEY_PATH $REMOTE_USER@$REMOTE_HOST \
-  "curl -s http://localhost:8000/api/v1/health"
+  "curl -s http://localhost:8000/health/"
 ```
 
 ### Если SSH ключ не работает:

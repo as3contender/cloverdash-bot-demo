@@ -1,0 +1,76 @@
+# .deployignore - файлы, которые не нужно копировать на сервер при развертывании
+
+# Git и система контроля версий
+.git/
+.gitignore
+.gitattributes
+
+# IDE и редакторы
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.sublime-project
+.sublime-workspace
+
+# OS файлы
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+*.temp
+
+# Python кэш и временные файлы
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Виртуальные окружения
+venv/
+env/
+ENV/
+.venv/
+
+# Coverage и тестирование
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# Логи разработки
+*.log
+logs/
+
+# Deployment файлы (не нужны на сервере)
+deployment/
+.deployignore
+
+# Документация разработки (README основной проекта)
+README.md
+description.txt
+
+# Файлы примеров (уже есть реальные .env)
+env_example.txt
+deploy.env.example
+
+# Тестовые файлы
+test_*.py
+*_test.py
+
+# Утилиты разработки
+check_*.py
+migrate_*.py
+generate_*.py
+add_*.py
+import_*.py
+
+# Makefile и конфигурация тестов
+Makefile
+pytest.ini
+
+# Дополнительные данные для разработки
+column_descriptions.json 
