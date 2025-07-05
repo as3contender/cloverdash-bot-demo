@@ -79,7 +79,7 @@ nano deploy.env
 ## 🔧 Требования
 
 ### На локальной машине:
-- ✅ SSH доступ к серверу с ключом (по умолчанию `id_ed25519_do_cloverdash-bot`)
+- ✅ SSH доступ к серверу с ключом (по умолчанию `your_ssh_key`)
 - ✅ Настроенный файл `deploy.env` с параметрами сервера
 - ✅ Настроенные `.env` файлы в папках `backend/` и `telegram-bot/`
 
@@ -99,9 +99,9 @@ nano deploy.env
 ### Deployment Config (`deploy.env`):
 ```env
 # Server Configuration
-REMOTE_HOST=64.227.69.138
+REMOTE_HOST=YOUR_SERVER_IP
 REMOTE_USER=root
-SSH_KEY_PATH=~/.ssh/id_ed25519_do_cloverdash-bot
+SSH_KEY_PATH=~/.ssh/your_ssh_key
 
 # Deployment Options
 DEPLOY_BACKEND=true
@@ -126,7 +126,7 @@ OPENAI_TEMPERATURE=0
 # Application Database Configuration (пользователи, история, настройки)
 APP_DATABASE_URL=postgresql://app_user:app_password@localhost:5432/cloverdash_app
 # или отдельно:
-APP_DATABASE_HOST=64.227.69.138  # будет изменено на localhost при развертывании
+APP_DATABASE_HOST=YOUR_SERVER_IP  # будет изменено на localhost при развертывании
 APP_DATABASE_PORT=5432
 APP_DATABASE_USER=app_user
 APP_DATABASE_PASSWORD=app_password
@@ -135,7 +135,7 @@ APP_DATABASE_NAME=cloverdash_app
 # Data Database Configuration (пользовательские данные для запросов)
 DATA_DATABASE_URL=postgresql://data_user:data_password@localhost:5433/cloverdash_data
 # или отдельно:
-DATA_DATABASE_HOST=64.227.69.138  # будет изменено на localhost при развертывании
+DATA_DATABASE_HOST=YOUR_SERVER_IP  # будет изменено на localhost при развертывании
 DATA_DATABASE_PORT=5433
 DATA_DATABASE_USER=data_user
 DATA_DATABASE_PASSWORD=data_password
@@ -159,7 +159,7 @@ LOG_LEVEL=INFO
 TELEGRAM_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 
 # API URL (будет изменено на localhost при развертывании)
-BACKEND_URL=http://64.227.69.138:8000
+BACKEND_URL=http://YOUR_SERVER_IP:8000
 ```
 
 ## 🚀 Процесс развертывания
@@ -203,7 +203,7 @@ echo "BACKEND_URL=http://your-server-ip:8000" >> telegram-bot/.env
 ```bash
 # Загрузите переменные из deploy.env
 source deploy.env 2>/dev/null || true
-REMOTE_HOST=${REMOTE_HOST:-64.227.69.138}
+REMOTE_HOST=${REMOTE_HOST:-YOUR_SERVER_IP}
 
 # Health check
 curl http://$REMOTE_HOST:8000/health/
@@ -225,9 +225,9 @@ open http://$REMOTE_HOST:8000/docs
 ```bash
 # Загрузите переменные из deploy.env или используйте значения по умолчанию
 source deploy.env 2>/dev/null || true
-SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/id_ed25519_do_cloverdash-bot}
+SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/your_ssh_key}
 REMOTE_USER=${REMOTE_USER:-root}
-REMOTE_HOST=${REMOTE_HOST:-64.227.69.138}
+REMOTE_HOST=${REMOTE_HOST:-YOUR_SERVER_IP}
 REMOTE_DEPLOY_DIR=${REMOTE_DEPLOY_DIR:-/opt/cloverdash-bot}
 
 ssh -i $SSH_KEY_PATH $REMOTE_USER@$REMOTE_HOST \
@@ -240,9 +240,9 @@ ssh -i $SSH_KEY_PATH $REMOTE_USER@$REMOTE_HOST \
 ```bash
 # Загрузите переменные из deploy.env
 source deploy.env 2>/dev/null || true
-SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/id_ed25519_do_cloverdash-bot}
+SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/your_ssh_key}
 REMOTE_USER=${REMOTE_USER:-root}
-REMOTE_HOST=${REMOTE_HOST:-64.227.69.138}
+REMOTE_HOST=${REMOTE_HOST:-YOUR_SERVER_IP}
 REMOTE_DEPLOY_DIR=${REMOTE_DEPLOY_DIR:-/opt/cloverdash-bot}
 
 # Backend logs
@@ -258,9 +258,9 @@ ssh -i $SSH_KEY_PATH $REMOTE_USER@$REMOTE_HOST \
 ```bash
 # Загрузите переменные из deploy.env
 source deploy.env 2>/dev/null || true
-SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/id_ed25519_do_cloverdash-bot}
+SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/your_ssh_key}
 REMOTE_USER=${REMOTE_USER:-root}
-REMOTE_HOST=${REMOTE_HOST:-64.227.69.138}
+REMOTE_HOST=${REMOTE_HOST:-YOUR_SERVER_IP}
 REMOTE_DEPLOY_DIR=${REMOTE_DEPLOY_DIR:-/opt/cloverdash-bot}
 
 # Backend
@@ -316,9 +316,9 @@ ssh -i $SSH_KEY_PATH $REMOTE_USER@$REMOTE_HOST \
 ```bash
 # Загрузите переменные из deploy.env
 source deploy.env 2>/dev/null || true
-SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/id_ed25519_do_cloverdash-bot}
+SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/your_ssh_key}
 REMOTE_USER=${REMOTE_USER:-root}
-REMOTE_HOST=${REMOTE_HOST:-64.227.69.138}
+REMOTE_HOST=${REMOTE_HOST:-YOUR_SERVER_IP}
 REMOTE_DEPLOY_DIR=${REMOTE_DEPLOY_DIR:-/opt/cloverdash-bot}
 
 # Проверьте логи
@@ -341,9 +341,9 @@ print('Connections OK')
 ```bash
 # Загрузите переменные из deploy.env
 source deploy.env 2>/dev/null || true
-SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/id_ed25519_do_cloverdash-bot}
+SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/your_ssh_key}
 REMOTE_USER=${REMOTE_USER:-root}
-REMOTE_HOST=${REMOTE_HOST:-64.227.69.138}
+REMOTE_HOST=${REMOTE_HOST:-YOUR_SERVER_IP}
 REMOTE_DEPLOY_DIR=${REMOTE_DEPLOY_DIR:-/opt/cloverdash-bot}
 
 # Проверьте логи бота
@@ -359,9 +359,9 @@ ssh -i $SSH_KEY_PATH $REMOTE_USER@$REMOTE_HOST \
 ```bash
 # Загрузите переменные из deploy.env
 source deploy.env 2>/dev/null || true
-SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/id_ed25519_do_cloverdash-bot}
+SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/your_ssh_key}
 REMOTE_USER=${REMOTE_USER:-root}
-REMOTE_HOST=${REMOTE_HOST:-64.227.69.138}
+REMOTE_HOST=${REMOTE_HOST:-YOUR_SERVER_IP}
 
 # Проверьте права доступа к ключу
 chmod 600 $SSH_KEY_PATH
@@ -377,9 +377,9 @@ ssh -i $SSH_KEY_PATH $REMOTE_USER@$REMOTE_HOST 'echo "Connection OK"'
 ```bash
 # Загрузите переменные из deploy.env
 source deploy.env 2>/dev/null || true
-SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/id_ed25519_do_cloverdash-bot}
+SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/your_ssh_key}
 REMOTE_USER=${REMOTE_USER:-root}
-REMOTE_HOST=${REMOTE_HOST:-64.227.69.138}
+REMOTE_HOST=${REMOTE_HOST:-YOUR_SERVER_IP}
 
 # Подключение к app database
 ssh -i $SSH_KEY_PATH $REMOTE_USER@$REMOTE_HOST \

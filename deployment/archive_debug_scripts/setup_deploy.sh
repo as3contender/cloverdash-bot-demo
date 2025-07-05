@@ -24,14 +24,14 @@ echo -e "${BLUE}📝 Please provide deployment configuration:${NC}"
 echo ""
 
 # Get server details
-read -p "Server IP/hostname (default: 64.227.69.138): " remote_host
-remote_host=${remote_host:-64.227.69.138}
+read -p "Server IP/hostname (default: YOUR_SERVER_IP): " remote_host
+remote_host=${remote_host:-YOUR_SERVER_IP}
 
 read -p "SSH username (default: root): " remote_user
 remote_user=${remote_user:-root}
 
-read -p "SSH key path (default: ~/.ssh/id_ed25519_do_cloverdash-bot, or leave empty for default SSH): " ssh_key_path
-ssh_key_path=${ssh_key_path:-~/.ssh/id_ed25519_do_cloverdash-bot}
+read -p "SSH key path (default: ~/.ssh/your_ssh_key, or leave empty for default SSH): " ssh_key_path
+ssh_key_path=${ssh_key_path:-~/.ssh/your_ssh_key}
 
 read -p "Deployment directory on server (default: /opt/cloverdash-bot): " deploy_dir
 deploy_dir=${deploy_dir:-/opt/cloverdash-bot}

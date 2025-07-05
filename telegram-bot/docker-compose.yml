@@ -7,7 +7,14 @@ services:
     env_file:
       - .env
     environment:
-      BACKEND_URL: ${BACKEND_URL:-http://host.docker.internal:8000}
+      BACKEND_URL: ${BACKEND_URL:-http://cloverdash_backend:8000}
     restart: unless-stopped
+    networks:
+      - cloverdash-network
     extra_hosts:
-      - "host.docker.internal:host-gateway" 
+      - "host.docker.internal:host-gateway"
+
+networks:
+  cloverdash-network:
+    driver: bridge
+    external: true 

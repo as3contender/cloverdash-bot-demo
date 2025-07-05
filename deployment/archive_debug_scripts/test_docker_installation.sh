@@ -21,8 +21,8 @@ load_env "deploy.env"
 
 # Default values
 REMOTE_USER="${REMOTE_USER:-root}"
-REMOTE_HOST="${REMOTE_HOST:-64.227.69.138}"
-SSH_KEY="${SSH_KEY_PATH:-~/.ssh/id_ed25519_do_cloverdash-bot}"
+REMOTE_HOST="${REMOTE_HOST:-YOUR_SERVER_IP}"
+SSH_KEY="${SSH_KEY_PATH:-~/.ssh/your_ssh_key}"
 
 # Usage function
 usage() {
@@ -32,8 +32,8 @@ usage() {
     echo ""
     echo "Options:"
     echo "  -u, --user USER     SSH username (default from deploy.env or 'root')"
-    echo "  -h, --host HOST     Server hostname/IP (default from deploy.env or '64.227.69.138')"
-    echo "  -k, --key PATH      SSH private key path (default from deploy.env or '~/.ssh/id_ed25519_do_cloverdash-bot')"
+    echo "  -h, --host HOST     Server hostname/IP (default from deploy.env or 'YOUR_SERVER_IP')"
+    echo "  -k, --key PATH      SSH private key path (default from deploy.env or '~/.ssh/your_ssh_key')"
     echo "  --help              Show this help message"
     echo ""
     echo "Examples:"

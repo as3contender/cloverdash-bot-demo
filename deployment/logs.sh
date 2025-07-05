@@ -15,9 +15,9 @@ else
 fi
 
 # Default values
-SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/id_ed25519_do_cloverdash-bot}
+SSH_KEY_PATH=${SSH_KEY_PATH:-~/.ssh/your_ssh_key}
 REMOTE_USER=${REMOTE_USER:-root}
-REMOTE_HOST=${REMOTE_HOST:-64.227.69.138}
+REMOTE_HOST=${REMOTE_HOST:-YOUR_SERVER_IP}
 REMOTE_DEPLOY_DIR=${REMOTE_DEPLOY_DIR:-/opt/cloverdash-bot}
 
 # Prepare SSH command

@@ -203,8 +203,8 @@ load_env "deploy.env"
 
 # Default values (can be overridden by deploy.env or command line)
 REMOTE_USER="${REMOTE_USER:-root}"
-REMOTE_HOST="${REMOTE_HOST:-64.227.69.138}"
-SSH_KEY="${SSH_KEY_PATH:-~/.ssh/id_ed25519_do_cloverdash-bot}"
+REMOTE_HOST="${REMOTE_HOST:-YOUR_SERVER_IP}"
+SSH_KEY="${SSH_KEY_PATH:-~/.ssh/your_ssh_key}"
 DEPLOY_BACKEND="${DEPLOY_BACKEND:-true}"
 DEPLOY_BOT="${DEPLOY_BOT:-true}"
 REMOTE_DEPLOY_DIR="${REMOTE_DEPLOY_DIR:-/opt/cloverdash-bot}"
@@ -219,8 +219,8 @@ usage() {
     echo ""
     echo "Options:"
     echo "  -u, --user USER     SSH username (default from deploy.env or 'root')"
-    echo "  -h, --host HOST     Server hostname/IP (default from deploy.env or '64.227.69.138')"
-    echo "  -k, --key PATH      SSH private key path (default from deploy.env or '~/.ssh/id_ed25519_do_cloverdash-bot')"
+    echo "  -h, --host HOST     Server hostname/IP (default from deploy.env or 'YOUR_SERVER_IP')"
+    echo "  -k, --key PATH      SSH private key path (default from deploy.env or '~/.ssh/your_ssh_key')"
     echo "  --backend-only      Deploy only backend API"
     echo "  --bot-only          Deploy only Telegram bot"
     echo "  --help              Show this help message"
@@ -306,6 +306,9 @@ else
     echo -e "${YELLOW}Using default SSH configuration (no key specified)${NC}"
 fi
 
+# Prepare RSYNC command for file transfers
+RSYNC_CMD=$(echo $SSH_CMD | sed 's/ssh/rsync -e ssh/')
+
 # Test SSH connection first
 echo -e "${BLUE}🔐 Testing SSH connection...${NC}"
 if ! $SSH_CMD -o ConnectTimeout=10 $REMOTE_USER@$REMOTE_HOST 'exit 0' 2>/dev/null; then
@@ -350,9 +353,14 @@ echo -e "${BLUE}🧹 Cleaning existing deployments...${NC}"
 $SSH_CMD $REMOTE_USER@$REMOTE_HOST "
     cd $REMOTE_DEPLOY_DIR 2>/dev/null || true
     find . -name \"docker-compose*.yml\" -exec docker-compose -f {} down --remove-orphans \\; 2>/dev/null || true
-    docker system prune -af --volumes 2>/dev/null || true
+    # Only remove stopped containers and dangling images (keep cache for faster builds)
+    docker container prune -f 2>/dev/null || true
+    docker image prune -f 2>/dev/null || true
     rm -rf $REMOTE_DEPLOY_DIR 2>/dev/null || true
     mkdir -p $REMOTE_DEPLOY_DIR
+    
+    # Create shared network for containers
+    docker network create cloverdash-network 2>/dev/null || echo 'Network already exists'
 " 2>/dev/null || true
 echo -e "${GREEN}✅ Cleanup completed${NC}"
 echo ""
@@ -366,7 +374,6 @@ if [ "$DEPLOY_BACKEND" = true ]; then
     
     # Copy backend files (excluding development files)
     echo -e "${YELLOW}📁 Copying backend files (optimized)...${NC}"
-    RSYNC_CMD=$(echo $SSH_CMD | sed 's/ssh/rsync -e ssh/')
     $RSYNC_CMD -av --exclude-from=../.deployignore ../backend/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_DEPLOY_DIR/backend/
     
     # Modify .env for production
@@ -374,11 +381,7 @@ if [ "$DEPLOY_BACKEND" = true ]; then
     $SSH_CMD $REMOTE_USER@$REMOTE_HOST "
         cd $REMOTE_DEPLOY_DIR/backend
         
-        # Set localhost for database connections
-        sed -i "s/APP_DATABASE_HOST=.*/APP_DATABASE_HOST=localhost/" .env 2>/dev/null || true
-        sed -i "s/DATA_DATABASE_HOST=.*/DATA_DATABASE_HOST=localhost/" .env 2>/dev/null || true
-        
-        # Set API host for production
+        # Set API host for production (keep database hosts from original .env)
         sed -i "s/API_HOST=.*/API_HOST=0.0.0.0/" .env 2>/dev/null || true
         sed -i "s/API_PORT=.*/API_PORT=8000/" .env 2>/dev/null || true
         
@@ -388,25 +391,26 @@ if [ "$DEPLOY_BACKEND" = true ]; then
             sed -i "s/SECRET_KEY=.*/SECRET_KEY=$NEW_SECRET/" .env 2>/dev/null || true
         fi
         
-        echo "Docker and docker-compose are ready for deployment..."
+        echo 'Docker and docker-compose are ready for deployment...'
         
         # Build and start backend with timeout handling
         docker-compose down --remove-orphans 2>/dev/null || true
         
-        echo "Building backend Docker image - this may take several minutes..."
-        timeout 600 docker-compose build --no-cache || {
-            echo "Build timeout or failed, trying without cache clear..."
-            docker-compose build
-        }
+        echo 'Building backend Docker image (using cache for speed)...'
+        # Try with cache first (much faster)
+        if ! timeout 300 docker-compose build; then
+            echo 'Build failed with cache, trying without cache...'
+            timeout 600 docker-compose build --no-cache
+        fi
         
-        echo "Starting backend services..."
+        echo 'Starting backend services...'
         docker-compose up -d
         
         # Wait for backend to be ready
-        echo "Waiting for backend to start..."
+        echo 'Waiting for backend to start...'
         for i in {1..30}; do
             if curl -s http://localhost:8000/health/ >/dev/null 2>&1; then
-                echo "Backend is ready!"
+                echo 'Backend is ready!'
                 break
             fi
             sleep 2
@@ -441,23 +445,24 @@ if [ "$DEPLOY_BOT" = true ]; then
     $SSH_CMD $REMOTE_USER@$REMOTE_HOST "
         cd $REMOTE_DEPLOY_DIR/telegram-bot
         
-        # Set backend URL to localhost
-        sed -i "s|BACKEND_URL=.*|BACKEND_URL=http://localhost:8000|" .env 2>/dev/null || true
+        # Set backend URL to container name for inter-container communication
+        sed -i "s|BACKEND_URL=.*|BACKEND_URL=http://cloverdash_backend:8000|" .env 2>/dev/null || true
         
         # Build and start bot
         docker-compose down --remove-orphans 2>/dev/null || true
         
-        echo "Building telegram bot Docker image..."
-        timeout 300 docker-compose build --no-cache || {
-            echo "Build timeout or failed, trying without cache clear..."
-            docker-compose build
-        }
+        echo 'Building telegram bot Docker image (using cache for speed)...'
+        # Try with cache first (much faster)
+        if ! timeout 180 docker-compose build; then
+            echo 'Build failed with cache, trying without cache...'
+            timeout 300 docker-compose build --no-cache
+        fi
         
-        echo "Starting telegram bot services..."
+        echo 'Starting telegram bot services...'
         docker-compose up -d
         
         # Wait for bot to start
-        echo "Waiting for telegram bot to start..."
+        echo 'Waiting for telegram bot to start...'
         sleep 10
     "
     

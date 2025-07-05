@@ -1,5 +1,105 @@
 # .deployignore - файлы, которые не нужно копировать на сервер при развертывании
 
+# Development files
+**/.git/
+**/.gitignore
+**/.DS_Store
+**/.vscode/
+**/.idea/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/build/
+**/develop-eggs/
+**/dist/
+**/downloads/
+**/eggs/
+**/.eggs/
+**/lib/
+**/lib64/
+**/parts/
+**/sdist/
+**/var/
+**/wheels/
+**/share/python-wheels/
+**/*.egg-info/
+**/.installed.cfg
+**/MANIFEST
+
+# Testing
+**/tests/__pycache__/
+**/test_*.py
+**/pytest.ini
+**/.coverage
+**/.pytest_cache/
+**/.tox/
+**/.nox/
+**/.coverage
+**/.coverage.*
+**/.cache
+**/nosetests.xml
+**/coverage.xml
+**/htmlcov/
+**/.mypy_cache/
+**/.dmypy.json
+**/dmypy.json
+
+# Documentation
+**/docs/
+**/*.md
+**/README*
+**/CHANGELOG*
+**/LICENSE*
+
+# Environment files
+**/.env.example
+**/.env.local
+**/.env.development
+**/.env.test
+**/env_example.txt
+
+# Deployment files
+**/deployment/
+**/deploy_*.sh
+**/docker-compose.override.yml
+**/docker-compose.dev.yml
+
+# IDE and editor files
+**/.vscode/
+**/.idea/
+**/.*swp
+**/.*swo
+**/.*~
+**/tags
+**/TAGS
+
+# OS specific files
+**/.DS_Store
+**/Thumbs.db
+**/desktop.ini
+
+# Log files
+**/logs/
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+
+# Database files
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Temporary files
+**/tmp/
+**/temp/
+**/*.tmp
+**/*.temp
+**/.*tmp
+**/.*temp
+
 # Git и система контроля версий
 .git/
 .gitignore
