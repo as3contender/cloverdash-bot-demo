@@ -36,3 +36,4 @@ services:
 networks:
   cloverdash-network:
     driver: bridge
+    external: true
