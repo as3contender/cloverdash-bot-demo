@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """Конфигурация приложения"""
 
     # OpenAI Configuration
-    openai_api_key: str
+    openai_api_key: Optional[str] = None
     openai_model: str = "gpt-3.5-turbo"
     openai_temperature: float = 0
 
