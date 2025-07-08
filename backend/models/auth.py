@@ -89,9 +89,19 @@ class UserSettings(BaseModel):
     """Схема настроек пользователя"""
 
     preferred_language: str = Field(default="en", description="Предпочитаемый язык")
+    show_explanation: bool = Field(default=True, description="Показывать объяснение")
+    show_sql: bool = Field(default=False, description="Показывать SQL запрос")
     timezone: str = Field(default="UTC", description="Временная зона")
     query_limit: int = Field(default=100, description="Лимит запросов")
     settings_json: dict = Field(default={}, description="Дополнительные настройки в JSON")
+
+
+class UserSettingsUpdate(BaseModel):
+    """Обновление настроек пользователя"""
+
+    preferred_language: Optional[str] = None
+    show_explanation: Optional[bool] = None
+    show_sql: Optional[bool] = None
 
 
 class UserPermission(BaseModel):

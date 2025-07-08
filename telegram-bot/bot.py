@@ -5,6 +5,7 @@ import aiohttp
 import asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from translations import get_translation
 
 # Load environment variables
 load_dotenv()
@@ -22,6 +23,7 @@ class CloverdashBot:
     def __init__(self):
         self.session = None
         self.user_tokens = {}  # Кэш токенов пользователей
+        self.user_settings = {}  # Кэш настроек пользователей
 
     async def get_or_create_user_token(self, user_id: str, user_data: dict) -> str:
         """Получает или создает токен для пользователя"""
@@ -53,6 +55,31 @@ class CloverdashBot:
         except Exception as e:
             logger.error(f"Error authenticating user {user_id}: {e}")
             raise
+
+    async def get_user_settings(self, user_id: str, token: str) -> dict:
+        """Получает настройки пользователя"""
+        if user_id in self.user_settings:
+            return self.user_settings[user_id]
+
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {token}"}
+            async with session.get(f"{BACKEND_URL}/settings", headers=headers) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self.user_settings[user_id] = data
+                    return data
+        return {}
+
+    async def update_user_settings_backend(self, user_id: str, token: str, data: dict) -> dict:
+        """Обновляет настройки пользователя"""
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {token}"}
+            async with session.patch(f"{BACKEND_URL}/settings", json=data, headers=headers) as resp:
+                if resp.status == 200:
+                    updated = await resp.json()
+                    self.user_settings[user_id] = updated
+                    return updated
+        return {}
 
     def _clean_markdown(self, text: str) -> str:
         """Remove Markdown formatting from text for plain text display"""
@@ -117,50 +144,23 @@ class CloverdashBot:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handler for /start command"""
         user = update.effective_user
-        welcome_message = f"""
-Hello, {user.first_name}! 👋
-
-I'm CloverdashBot, your database assistant!
-
-I can:
-• Answer questions about data in natural language
-• Build SQL queries automatically
-• Provide results in a convenient format
-
-Just ask me a question about the data, and I'll find the answer!
-
-Examples:
-• "Show current time"
-• "What is the sales volume in January?"
-• "What is the best-selling product?"
-        """
+        user_id = str(user.id)
+        user_data = {"username": user.username, "first_name": user.first_name, "last_name": user.last_name}
+        token = await self.get_or_create_user_token(user_id, user_data)
+        settings = await self.get_user_settings(user_id, token)
+        lang = settings.get("preferred_language", "en")
+        welcome_message = get_translation(lang, "start").format(name=user.first_name or "")
         await update.message.reply_text(welcome_message)
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handler for /help command"""
-        help_message = """
-🤖 Available commands:
-
-/start - Start working with the bot
-/help - Show this message
-/tables - Show available tables and views
-/sample <table_name> - Show sample data (first 3 records) from a table
-
-📊 How to use:
-Just write your question about the data in natural language, and I'll find the answer!
-
-Example questions:
-• "Show current time and date"
-• "What is the sales volume in January?"
-• "Show list of tables in the database"
-
-Example sample commands:
-• /sample bills_view
-• /sample demo1.bills_view
-• /sample public.users
-
-⚠️ Important: I only work with SELECT queries for data security.
-        """
+        user = update.effective_user
+        user_id = str(user.id)
+        user_data = {"username": user.username, "first_name": user.first_name, "last_name": user.last_name}
+        token = await self.get_or_create_user_token(user_id, user_data)
+        settings = await self.get_user_settings(user_id, token)
+        lang = settings.get("preferred_language", "en")
+        help_message = get_translation(lang, "help") + "\n\n⚠️ Important: I only work with SELECT queries for data security."
         await update.message.reply_text(help_message)
 
     async def tables_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -346,6 +346,44 @@ Example sample commands:
             logger.error(f"Error in sample_command: {e}")
             await update.message.reply_text("❌ An error occurred getting sample data. Please try again.")
 
+    async def settings_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Изменение пользовательских настроек"""
+        user = update.effective_user
+        user_id = str(user.id)
+        user_data = {"username": user.username, "first_name": user.first_name, "last_name": user.last_name}
+        token = await self.get_or_create_user_token(user_id, user_data)
+
+        if not context.args:
+            settings = await self.get_user_settings(user_id, token)
+            lang = settings.get("preferred_language", "en")
+            msg = get_translation(lang, "current_settings").format(
+                lang=settings.get("preferred_language", "en"),
+                explanation=settings.get("show_explanation", True),
+                sql=settings.get("show_sql", False),
+            )
+            await update.message.reply_text(msg)
+            return
+
+        if len(context.args) >= 2:
+            option = context.args[0].lower()
+            value = context.args[1].lower()
+            update_data = {}
+            if option == "lang":
+                update_data["preferred_language"] = value
+            elif option == "show_explanation":
+                update_data["show_explanation"] = value in ("on", "true", "1", "yes")
+            elif option == "show_sql":
+                update_data["show_sql"] = value in ("on", "true", "1", "yes")
+            else:
+                await update.message.reply_text("Unknown setting. Use lang, show_explanation or show_sql")
+                return
+
+            settings = await self.update_user_settings_backend(user_id, token, update_data)
+            lang = settings.get("preferred_language", "en")
+            await update.message.reply_text(get_translation(lang, "settings_saved"))
+        else:
+            await update.message.reply_text("Usage: /settings <lang|show_explanation|show_sql> <value>")
+
     async def handle_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handler for text messages (user questions)"""
         try:
@@ -373,6 +411,7 @@ Example sample commands:
             logger.info("Getting user authentication token...")
             # Получаем токен аутентификации для пользователя
             token = await self.get_or_create_user_token(user_id, user_data)
+            settings = await self.get_user_settings(user_id, token)
 
             logger.info("Starting backend API request...")
             # Send request to backend API
@@ -410,14 +449,13 @@ Example sample commands:
                                 if data_count > 3:
                                     reply_message += f"... and {data_count - 3} more records\n\n"
 
-                            # Add explanation if available
-                            if result.get("explanation"):
-                                # Escape special characters in explanation
+                            # Add explanation if available and allowed
+                            if settings.get("show_explanation", True) and result.get("explanation"):
                                 safe_explanation = self._escape_markdown(result["explanation"])
                                 reply_message += f"💬 *Explanation:*\n{safe_explanation}\n\n"
 
-                            # Add SQL query
-                            if result.get("sql_query"):
+                            # Add SQL query if allowed
+                            if settings.get("show_sql", False) and result.get("sql_query"):
                                 # SQL code blocks don't need escaping inside ```
                                 sql_query = result["sql_query"]
                                 reply_message += f"📝 *SQL Query:*\n```sql\n{sql_query}\n```\n\n"
@@ -513,6 +551,7 @@ def main():
     application.add_handler(CommandHandler("help", bot.help_command))
     application.add_handler(CommandHandler("tables", bot.tables_command))
     application.add_handler(CommandHandler("sample", bot.sample_command))
+    application.add_handler(CommandHandler("settings", bot.settings_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_query))
     application.add_error_handler(bot.error_handler)
 

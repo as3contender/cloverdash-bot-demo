@@ -37,6 +37,7 @@ __all__ = [
     "LoginRequest",
     "UserQueryHistory",
     "UserSettings",
+    "UserSettingsUpdate",
     "UserPermission",
     # Схемы LLM (llm.py)
     "LLMQueryRequest",

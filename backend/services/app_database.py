@@ -504,6 +504,8 @@ class AppDatabaseService:
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 user_id UUID NOT NULL UNIQUE,
                 preferred_language VARCHAR(10) DEFAULT 'en',
+                show_explanation BOOLEAN DEFAULT true,
+                show_sql BOOLEAN DEFAULT false,
                 timezone VARCHAR(50) DEFAULT 'UTC',
                 query_limit INTEGER DEFAULT 100,
                 settings_json JSONB DEFAULT '{}',

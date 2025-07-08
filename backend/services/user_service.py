@@ -5,7 +5,7 @@ import logging
 
 from services.app_database import app_database_service
 from services.security import security_service
-from models.auth import UserCreate, User, TelegramAuth
+from models.auth import UserCreate, User, TelegramAuth, UserSettings
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,7 @@ class UserService:
             if result.data:
                 user_data = UserService._convert_user_data(result.data[0])
                 logger.info(f"User created successfully: {user_id}")
+                await UserService.create_default_settings(user_id)
                 return User(**user_data)
             else:
                 raise Exception("Failed to create user")
@@ -199,6 +200,74 @@ class UserService:
             )
         except Exception as e:
             logger.error(f"Error saving user query history: {e}")
+
+    @staticmethod
+    async def create_default_settings(user_id: str) -> None:
+        """Создает настройки по умолчанию для пользователя"""
+        try:
+            query = (
+                "INSERT INTO user_settings (user_id) VALUES ($1) "
+                "ON CONFLICT (user_id) DO NOTHING"
+            )
+            await app_database_service.execute_query(query, [user_id])
+        except Exception as e:
+            logger.error(f"Error creating default settings for {user_id}: {e}")
+
+    @staticmethod
+    async def get_user_settings(user_id: str) -> Optional[UserSettings]:
+        """Получение настроек пользователя"""
+        try:
+            query = """
+            SELECT user_id, preferred_language, show_explanation, show_sql, timezone,
+                   query_limit, settings_json
+            FROM user_settings WHERE user_id = $1
+            """
+            result = await app_database_service.execute_query(query, [user_id])
+            if result.data:
+                return UserSettings(**result.data[0])
+            return None
+        except Exception as e:
+            logger.error(f"Error getting settings for user {user_id}: {e}")
+            return None
+
+    @staticmethod
+    async def update_user_settings(
+        user_id: str,
+        preferred_language: Optional[str] = None,
+        show_explanation: Optional[bool] = None,
+        show_sql: Optional[bool] = None,
+    ) -> Optional[UserSettings]:
+        """Обновление настроек пользователя"""
+        try:
+            fields = []
+            params = []
+            if preferred_language is not None:
+                params.append(preferred_language)
+                fields.append(f"preferred_language = ${len(params)}")
+            if show_explanation is not None:
+                params.append(show_explanation)
+                fields.append(f"show_explanation = ${len(params)}")
+            if show_sql is not None:
+                params.append(show_sql)
+                fields.append(f"show_sql = ${len(params)}")
+
+            if not fields:
+                return await UserService.get_user_settings(user_id)
+
+            params.append(user_id)
+            query = (
+                f"UPDATE user_settings SET {', '.join(fields)}, "
+                "updated_at = CURRENT_TIMESTAMP WHERE user_id = $" + str(len(params)) +
+                " RETURNING user_id, preferred_language, show_explanation, show_sql, timezone, query_limit, settings_json"
+            )
+
+            result = await app_database_service.execute_query(query, params)
+            if result.data:
+                return UserSettings(**result.data[0])
+            return None
+        except Exception as e:
+            logger.error(f"Error updating settings for user {user_id}: {e}")
+            return None
 
 
 # Создаем экземпляр сервиса
