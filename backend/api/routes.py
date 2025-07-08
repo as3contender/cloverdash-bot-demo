@@ -5,6 +5,7 @@ from api.auth import auth_router
 from api.health import health_router
 from api.database import database_router
 from api.table_descriptions import descriptions_router
+from api.user_settings import settings_router
 
 # Создаем главный роутер
 router = APIRouter()
@@ -14,6 +15,7 @@ router.include_router(auth_router)
 router.include_router(health_router)
 router.include_router(database_router)
 router.include_router(descriptions_router)
+router.include_router(settings_router)
 
 
 @router.get("/", response_model=Dict[str, Any])
@@ -28,5 +30,6 @@ async def root():
             "health": "/health/*",
             "database": "/database/*",
             "descriptions": "/descriptions/*",
+            "settings": "/settings/*",
         },
     }

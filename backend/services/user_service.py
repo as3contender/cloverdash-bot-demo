@@ -5,7 +5,7 @@ import logging
 
 from services.app_database import app_database_service
 from services.security import security_service
-from models.auth import UserCreate, User, TelegramAuth
+from models.auth import UserCreate, User, TelegramAuth, UserSettings
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,7 @@ class UserService:
             if result.data:
                 user_data = UserService._convert_user_data(result.data[0])
                 logger.info(f"User created successfully: {user_id}")
+                await UserService.create_default_settings(user_id)
                 return User(**user_data)
             else:
                 raise Exception("Failed to create user")
@@ -199,6 +200,93 @@ class UserService:
             )
         except Exception as e:
             logger.error(f"Error saving user query history: {e}")
+
+    @staticmethod
+    async def create_default_settings(user_id: str) -> None:
+        """Создает настройки по умолчанию для пользователя"""
+        try:
+            query = (
+                "INSERT INTO user_settings (user_id, settings_json) VALUES ($1, $2) "
+                "ON CONFLICT (user_id) DO NOTHING"
+            )
+            default_settings = {"show_explanation": True, "show_sql": False}
+            await app_database_service.execute_query(query, [user_id, default_settings])
+        except Exception as e:
+            logger.error(f"Error creating default settings for {user_id}: {e}")
+
+    @staticmethod
+    async def get_user_settings(user_id: str) -> Optional[UserSettings]:
+        """Получение настроек пользователя"""
+        try:
+            query = """
+            SELECT user_id, preferred_language, timezone,
+                   query_limit, settings_json
+            FROM user_settings WHERE user_id = $1
+            """
+            result = await app_database_service.execute_query(query, [user_id])
+            if result.data:
+                row = result.data[0]
+                settings = row.get("settings_json") or {}
+                row["show_explanation"] = settings.get("show_explanation", True)
+                row["show_sql"] = settings.get("show_sql", False)
+                return UserSettings(**row)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting settings for user {user_id}: {e}")
+            return None
+
+    @staticmethod
+    async def update_user_settings(
+        user_id: str,
+        preferred_language: Optional[str] = None,
+        show_explanation: Optional[bool] = None,
+        show_sql: Optional[bool] = None,
+    ) -> Optional[UserSettings]:
+        """Обновление настроек пользователя"""
+        try:
+            # Получаем текущие настройки JSON
+            get_query = "SELECT settings_json FROM user_settings WHERE user_id = $1"
+            current = await app_database_service.execute_query(get_query, [user_id])
+            if not current.data:
+                return None
+            settings_json = current.data[0].get("settings_json") or {}
+
+            if show_explanation is not None:
+                settings_json["show_explanation"] = show_explanation
+            if show_sql is not None:
+                settings_json["show_sql"] = show_sql
+
+            fields = []
+            params = []
+            if preferred_language is not None:
+                params.append(preferred_language)
+                fields.append(f"preferred_language = ${len(params)}")
+
+            # Всегда обновляем settings_json
+            params.append(settings_json)
+            fields.append(f"settings_json = ${len(params)}")
+
+            if not fields:
+                return await UserService.get_user_settings(user_id)
+
+            params.append(user_id)
+            query = (
+                f"UPDATE user_settings SET {', '.join(fields)}, "
+                "updated_at = CURRENT_TIMESTAMP WHERE user_id = $" + str(len(params)) +
+                " RETURNING user_id, preferred_language, timezone, query_limit, settings_json"
+            )
+
+            result = await app_database_service.execute_query(query, params)
+            if result.data:
+                row = result.data[0]
+                settings = row.get("settings_json") or {}
+                row["show_explanation"] = settings.get("show_explanation", True)
+                row["show_sql"] = settings.get("show_sql", False)
+                return UserSettings(**row)
+            return None
+        except Exception as e:
+            logger.error(f"Error updating settings for user {user_id}: {e}")
+            return None
 
 
 # Создаем экземпляр сервиса
