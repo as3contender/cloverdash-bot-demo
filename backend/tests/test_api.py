@@ -5,7 +5,8 @@ from datetime import datetime
 import json
 
 from main import app
-from models.schemas import QueryRequest, QueryResponse, HealthResponse, DatabaseQueryResult
+from models.base import QueryRequest, QueryResponse, HealthResponse
+from models.database import DatabaseQueryResult
 from config.settings import settings
 
 

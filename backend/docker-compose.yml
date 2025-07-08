@@ -25,8 +25,15 @@ services:
       LOG_LEVEL: INFO
     ports:
       - "8000:8000"
-    volumes:
-      - .:/app
+    # volumes:
+    #   - .:/app  # Uncomment for development only - causes rebuild issues in production
     restart: unless-stopped
+    networks:
+      - cloverdash-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+networks:
+  cloverdash-network:
+    driver: bridge
+    external: true

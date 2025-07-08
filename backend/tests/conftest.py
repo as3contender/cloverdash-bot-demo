@@ -11,9 +11,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from main import app
 from config.settings import Settings
-from services.database import DatabaseService
-from services.llm_service import LLMService
-from models.schemas import DatabaseQueryResult
+from services.data_database import DataDatabaseService
+from services.llm_service import llm_service
+from models.database import DatabaseQueryResult
 
 
 @pytest.fixture(scope="session")
@@ -61,10 +61,10 @@ def mock_db_pool(mock_db_connection):
 @pytest.fixture
 def database_service_mock(mock_db_pool):
     """Мок сервиса базы данных"""
-    with patch("services.database.asyncpg.create_pool", return_value=mock_db_pool):
-        service = DatabaseService()
+    with patch("services.data_database.asyncpg.create_pool", return_value=mock_db_pool):
+        service = DataDatabaseService()
         service.pool = mock_db_pool
-        service._connection_status = True
+        service.is_connected = True
         yield service
 
 
@@ -98,11 +98,10 @@ def llm_service_mock(mock_openai_response):
         mock_llm.return_value = mock_openai_response
         mock_llm_class.return_value = mock_llm
 
-        # Мокаем openai.api_key
-        with patch("services.llm_service.openai") as mock_openai:
-            service = LLMService()
-            service.llm = mock_llm
-            yield service
+        # Мокаем LLMService
+        with patch.object(llm_service, "llm", mock_llm):
+            llm_service.is_connected = True
+            yield llm_service
 
 
 @pytest.fixture
