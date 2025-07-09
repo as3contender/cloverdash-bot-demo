@@ -1,0 +1,23 @@
+services:
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloverdash_telegram_bot_local
+    env_file:
+      - .env
+    environment:
+      BACKEND_URL: ${BACKEND_URL:-http://host.docker.internal:8000}
+    restart: unless-stopped
+    networks:
+      - cloverdash-local-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Дополнительные настройки для разработки
+    stdin_open: true
+    tty: true
+
+networks:
+  cloverdash-local-network:
+    driver: bridge
+    # Убираем external: true - сеть будет создана автоматически 

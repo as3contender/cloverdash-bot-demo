@@ -1,0 +1,42 @@
+services:
+  # Backend API для локальной разработки
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloverdash_backend_local
+    env_file:
+      - .env
+    environment:
+      # OpenAI Configuration
+      OPENAI_MODEL: gpt-3.5-turbo
+      OPENAI_TEMPERATURE: 0
+      
+      # API Configuration
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      API_TITLE: CloverdashBot Backend (Local)
+      API_VERSION: 1.0.0
+      
+      # Security
+      ALLOWED_ORIGINS: '["*"]'
+      
+      # Logging
+      LOG_LEVEL: DEBUG  # Более подробные логи для разработки
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app  # Монтируем код для hot reload
+    restart: unless-stopped
+    networks:
+      - cloverdash-local-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Дополнительные настройки для разработки
+    stdin_open: true
+    tty: true
+
+networks:
+  cloverdash-local-network:
+    driver: bridge
+    # Убираем external: true - сеть будет создана автоматически 
