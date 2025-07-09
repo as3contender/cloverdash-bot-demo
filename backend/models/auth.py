@@ -93,7 +93,6 @@ class UserSettings(BaseModel):
     show_sql: bool = Field(default=False, description="Показывать SQL запрос")
     timezone: str = Field(default="UTC", description="Временная зона")
     query_limit: int = Field(default=100, description="Лимит запросов")
-    settings_json: dict = Field(default={}, description="Дополнительные настройки в JSON")
 
 
 class UserSettingsUpdate(BaseModel):

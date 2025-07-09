@@ -75,7 +75,7 @@ local-up: backend-local-up
 	@echo "⏳ Ожидание запуска Backend..."
 	@sleep 5
 	@echo "🤖 Запуск Telegram Bot..."
-	cd $(BOT_DIR) && make up
+	cd $(BOT_DIR) && make local-up
 	@echo "✅ Весь стек запущен для локальной разработки!"
 
 local-down: bot-down backend-local-down

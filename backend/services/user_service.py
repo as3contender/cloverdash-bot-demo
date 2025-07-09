@@ -205,12 +205,25 @@ class UserService:
     async def create_default_settings(user_id: str) -> None:
         """Создает настройки по умолчанию для пользователя"""
         try:
-            query = (
-                "INSERT INTO user_settings (user_id, settings_json) VALUES ($1, $2) "
-                "ON CONFLICT (user_id) DO NOTHING"
-            )
+            query = """
+                INSERT INTO user_settings (user_id, preferred_language, timezone, query_limit, settings_json) 
+                VALUES ($1, $2, $3, $4, $5) 
+                ON CONFLICT (user_id) DO NOTHING
+            """
+            import json
+
             default_settings = {"show_explanation": True, "show_sql": False}
-            await app_database_service.execute_query(query, [user_id, default_settings])
+            await app_database_service.execute_query(
+                query,
+                [
+                    user_id,
+                    "en",  # preferred_language
+                    "UTC",  # timezone
+                    100,  # query_limit
+                    json.dumps(default_settings),  # Конвертируем в JSON строку
+                ],
+            )
+            logger.info(f"Default settings created for user {user_id}")
         except Exception as e:
             logger.error(f"Error creating default settings for {user_id}: {e}")
 
@@ -225,11 +238,35 @@ class UserService:
             """
             result = await app_database_service.execute_query(query, [user_id])
             if result.data:
+                import json
+
                 row = result.data[0]
-                settings = row.get("settings_json") or {}
+                settings_json = row.get("settings_json") or "{}"
+                # Парсим JSON строку в словарь
+                settings = json.loads(settings_json) if isinstance(settings_json, str) else settings_json
                 row["show_explanation"] = settings.get("show_explanation", True)
                 row["show_sql"] = settings.get("show_sql", False)
+                # Убираем settings_json из словаря, так как его нет в модели UserSettings
+                row.pop("settings_json", None)
                 return UserSettings(**row)
+            else:
+                # Если настроек нет, создаем их по умолчанию
+                logger.info(f"Creating default settings for user {user_id}")
+                await UserService.create_default_settings(user_id)
+                # Повторно получаем созданные настройки
+                result = await app_database_service.execute_query(query, [user_id])
+                if result.data:
+                    import json
+
+                    row = result.data[0]
+                    settings_json = row.get("settings_json") or "{}"
+                    # Парсим JSON строку в словарь
+                    settings = json.loads(settings_json) if isinstance(settings_json, str) else settings_json
+                    row["show_explanation"] = settings.get("show_explanation", True)
+                    row["show_sql"] = settings.get("show_sql", False)
+                    # Убираем settings_json из словаря, так как его нет в модели UserSettings
+                    row.pop("settings_json", None)
+                    return UserSettings(**row)
             return None
         except Exception as e:
             logger.error(f"Error getting settings for user {user_id}: {e}")
@@ -244,12 +281,19 @@ class UserService:
     ) -> Optional[UserSettings]:
         """Обновление настроек пользователя"""
         try:
+            logger.info(
+                f"Updating settings for user {user_id}: lang={preferred_language}, explanation={show_explanation}, sql={show_sql}"
+            )
             # Получаем текущие настройки JSON
+            import json
+
             get_query = "SELECT settings_json FROM user_settings WHERE user_id = $1"
             current = await app_database_service.execute_query(get_query, [user_id])
             if not current.data:
                 return None
-            settings_json = current.data[0].get("settings_json") or {}
+            settings_json_str = current.data[0].get("settings_json") or "{}"
+            # Парсим JSON строку в словарь
+            settings_json = json.loads(settings_json_str) if isinstance(settings_json_str, str) else settings_json_str
 
             if show_explanation is not None:
                 settings_json["show_explanation"] = show_explanation
@@ -262,27 +306,41 @@ class UserService:
                 params.append(preferred_language)
                 fields.append(f"preferred_language = ${len(params)}")
 
-            # Всегда обновляем settings_json
-            params.append(settings_json)
-            fields.append(f"settings_json = ${len(params)}")
+            # Всегда обновляем settings_json если есть изменения
+            if show_explanation is not None or show_sql is not None:
+                import json
 
+                params.append(json.dumps(settings_json))  # Конвертируем в JSON строку
+                fields.append(f"settings_json = ${len(params)}")
+
+            # Если нет полей для обновления, возвращаем текущие настройки
             if not fields:
                 return await UserService.get_user_settings(user_id)
 
             params.append(user_id)
             query = (
                 f"UPDATE user_settings SET {', '.join(fields)}, "
-                "updated_at = CURRENT_TIMESTAMP WHERE user_id = $" + str(len(params)) +
-                " RETURNING user_id, preferred_language, timezone, query_limit, settings_json"
+                "updated_at = CURRENT_TIMESTAMP WHERE user_id = $"
+                + str(len(params))
+                + " RETURNING user_id, preferred_language, timezone, query_limit, settings_json"
             )
 
             result = await app_database_service.execute_query(query, params)
             if result.data:
+                import json
+
                 row = result.data[0]
-                settings = row.get("settings_json") or {}
+                settings_json = row.get("settings_json") or "{}"
+                # Парсим JSON строку в словарь
+                settings = json.loads(settings_json) if isinstance(settings_json, str) else settings_json
                 row["show_explanation"] = settings.get("show_explanation", True)
                 row["show_sql"] = settings.get("show_sql", False)
-                return UserSettings(**row)
+                # Убираем settings_json из словаря, так как его нет в модели UserSettings
+                row.pop("settings_json", None)
+                updated_settings = UserSettings(**row)
+                logger.info(f"Settings updated successfully for user {user_id}: {updated_settings}")
+                return updated_settings
+            logger.warning(f"No data returned when updating settings for user {user_id}")
             return None
         except Exception as e:
             logger.error(f"Error updating settings for user {user_id}: {e}")

@@ -1,0 +1,7 @@
+start - Start working with the bot
+help - Show help message with all available commands
+tables - Show available tables and views in the database
+sample - Show sample data (first 3 records) from a table
+settings - Show or change your preferences (language, explanations, SQL display)
+en - Quick switch to English 🇺🇸
+ru - Quick switch to Russian 🇷🇺 
