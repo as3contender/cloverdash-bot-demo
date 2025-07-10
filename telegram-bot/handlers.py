@@ -181,19 +181,17 @@ class CommandHandlers:
     async def settings_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик команды /settings для изменения пользовательских настроек"""
         user_data = self._get_user_data(update)
-        user_id = user_data["user_id"]
 
         try:
-            token = await self.api_client.authenticate_user(user_id, user_data)
+            # Получаем настройки пользователя
+            user_settings = await self.user_service.authenticate_and_get_settings(user_data)
 
             if not context.args:
                 # Показываем текущие настройки
-                settings = await self.api_client.get_user_settings(user_id, token)
-                lang = settings.get("preferred_language", "en")
-                msg = get_translation(lang, "current_settings").format(
-                    lang=settings.get("preferred_language", "en"),
-                    explanation=settings.get("show_explanation", True),
-                    sql=settings.get("show_sql", False),
+                msg = get_translation(user_settings.preferred_language, "current_settings").format(
+                    lang=user_settings.preferred_language,
+                    explanation=user_settings.show_explanation,
+                    sql=user_settings.show_sql,
                 )
                 await update.message.reply_text(msg)
                 return
@@ -201,82 +199,70 @@ class CommandHandlers:
             if len(context.args) >= 2:
                 option = context.args[0].lower()
                 value = context.args[1].lower()
-                update_data = {}
 
-                if option == "lang":
-                    # Валидация языка
-                    if value not in ("en", "ru"):
-                        # Получаем текущий язык для показа ошибки
-                        settings = await self.api_client.get_user_settings(user_id, token)
-                        current_lang = settings.get("preferred_language", "en")
-                        await update.message.reply_text(get_translation(current_lang, "invalid_language"))
-                        return
-                    update_data["preferred_language"] = value
-                elif option == "show_explanation":
-                    update_data["show_explanation"] = value in ("on", "true", "1", "yes")
-                elif option == "show_sql":
-                    update_data["show_sql"] = value in ("on", "true", "1", "yes")
-                else:
-                    # Получаем текущий язык для показа ошибки
-                    settings = await self.api_client.get_user_settings(user_id, token)
-                    current_lang = settings.get("preferred_language", "en")
-                    await update.message.reply_text(get_translation(current_lang, "unknown_setting"))
-                    return
+                # Валидация и обновление настроек через UserService
+                try:
+                    updated_settings = await self.user_service.update_settings(user_data, option, value)
 
-                settings = await self.api_client.update_user_settings(user_id, token, update_data)
-                # Очищаем кэш настроек чтобы получить свежие данные
-                self.api_client.clear_settings_cache(user_id)
-                lang = settings.get("preferred_language", "en")
+                    # Форматируем сообщение об успехе
+                    if option == "lang":
+                        flag = Emoji.FLAG_US if value == "en" else Emoji.FLAG_RU
+                        lang_name = "English" if value == "en" else "Русский"
+                        success_msg = get_translation(updated_settings.preferred_language, "settings_saved")
+                        success_msg += f"\n{Emoji.GLOBE} Language: {lang_name} {flag}"
+                        await update.message.reply_text(success_msg)
+                    else:
+                        await update.message.reply_text(
+                            get_translation(updated_settings.preferred_language, "settings_saved")
+                        )
 
-                # Добавляем флаги для изменения языка
-                if option == "lang":
-                    flag = "🇺🇸" if value == "en" else "🇷🇺"
-                    lang_name = "English" if value == "en" else "Русский"
-                    success_msg = get_translation(lang, "settings_saved") + f"\n🌐 Language: {lang_name} {flag}"
-                    await update.message.reply_text(success_msg)
-                else:
-                    await update.message.reply_text(get_translation(lang, "settings_saved"))
+                except ValueError as e:
+                    # Обрабатываем ошибки валидации
+                    error_msg = get_translation(user_settings.preferred_language, str(e))
+                    await update.message.reply_text(error_msg)
+
             else:
-                # Получаем текущий язык для показа help сообщения
-                settings = await self.api_client.get_user_settings(user_id, token)
-                current_lang = settings.get("preferred_language", "en")
-                await update.message.reply_text(get_translation(current_lang, "settings_usage"))
+                # Показываем help сообщение
+                await update.message.reply_text(get_translation(user_settings.preferred_language, "settings_usage"))
 
+        except AuthenticationError as e:
+            logger.error(f"Authentication error in settings_command: {e}")
+            await update.message.reply_text(f"{Emoji.CROSS} Authentication failed. Please try /start")
         except Exception as e:
             logger.error(f"Error in settings_command: {e}")
-            await update.message.reply_text("❌ Error updating settings. Please try again.")
+            await update.message.reply_text(f"{Emoji.CROSS} Error updating settings. Please try again.")
 
     async def quick_lang_en_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Быстрое переключение на английский язык"""
         user_data = self._get_user_data(update)
-        user_id = user_data["user_id"]
 
         try:
-            token = await self.api_client.authenticate_user(user_id, user_data)
-            update_data = {"preferred_language": "en"}
-            settings = await self.api_client.update_user_settings(user_id, token, update_data)
-            self.api_client.clear_settings_cache(user_id)
-
-            await update.message.reply_text("Settings updated ✅\n🌐 Language: English 🇺🇸")
+            await self.user_service.update_language(user_data, Language.ENGLISH)
+            await update.message.reply_text(
+                f"Settings updated {Emoji.CHECK}\n{Emoji.GLOBE} Language: English {Emoji.FLAG_US}"
+            )
+        except AuthenticationError as e:
+            logger.error(f"Authentication error in quick_lang_en_command: {e}")
+            await update.message.reply_text(f"{Emoji.CROSS} Authentication failed. Please try /start")
         except Exception as e:
             logger.error(f"Error in quick_lang_en_command: {e}")
-            await update.message.reply_text("❌ Error changing language. Please try again.")
+            await update.message.reply_text(f"{Emoji.CROSS} Error changing language. Please try again.")
 
     async def quick_lang_ru_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Быстрое переключение на русский язык"""
         user_data = self._get_user_data(update)
-        user_id = user_data["user_id"]
 
         try:
-            token = await self.api_client.authenticate_user(user_id, user_data)
-            update_data = {"preferred_language": "ru"}
-            settings = await self.api_client.update_user_settings(user_id, token, update_data)
-            self.api_client.clear_settings_cache(user_id)
-
-            await update.message.reply_text("Настройки обновлены ✅\n🌐 Язык: Русский 🇷🇺")
+            await self.user_service.update_language(user_data, Language.RUSSIAN)
+            await update.message.reply_text(
+                f"Настройки обновлены {Emoji.CHECK}\n{Emoji.GLOBE} Язык: Русский {Emoji.FLAG_RU}"
+            )
+        except AuthenticationError as e:
+            logger.error(f"Authentication error in quick_lang_ru_command: {e}")
+            await update.message.reply_text(f"{Emoji.CROSS} Authentication failed. Please try /start")
         except Exception as e:
             logger.error(f"Error in quick_lang_ru_command: {e}")
-            await update.message.reply_text("❌ Ошибка при смене языка. Попробуйте еще раз.")
+            await update.message.reply_text(f"{Emoji.CROSS} Ошибка при смене языка. Попробуйте еще раз.")
 
     async def handle_example_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик callback'ов от кнопок с примерами"""

@@ -51,6 +51,31 @@ class UserService:
             logger.error(f"Failed to update language for user {user_data.user_id}: {e}")
             raise
 
+    async def update_settings(self, user_data: UserData, option: str, value: str) -> UserSettings:
+        """Обновление настроек пользователя с валидацией"""
+        try:
+            # Валидация входных данных
+            setting_key, validated_value = ValidationService.validate_settings_option(option, value)
+
+            # Аутентификация
+            token, _ = await self.authenticate_and_get_settings(user_data)
+
+            # Обновление настроек
+            update_data = {setting_key: validated_value}
+            updated_settings = await self.api_client.update_user_settings(user_data.user_id, token, update_data)
+
+            # Очистка кэша
+            self.api_client.clear_settings_cache(user_data.user_id)
+
+            return UserSettings.from_dict(updated_settings)
+
+        except ValidationError as e:
+            # Передаем ошибки валидации как есть
+            raise ValueError(str(e))
+        except Exception as e:
+            logger.error(f"Failed to update settings for user {user_data.user_id}: {e}")
+            raise
+
 
 class DatabaseService:
     """Сервис для работы с базой данных"""
@@ -180,7 +205,7 @@ class ValidationService:
 
         if option == "lang":
             if value not in ("en", "ru"):
-                raise ValidationError("Invalid language. Use 'en' or 'ru'")
+                raise ValidationError("invalid_language")
             return "preferred_language", value
 
         elif option == "show_explanation":
@@ -192,7 +217,7 @@ class ValidationService:
             return "show_sql", bool_value
 
         else:
-            raise ValidationError(f"Unknown setting: {option}")
+            raise ValidationError("unknown_setting")
 
 
 class MessageService:
