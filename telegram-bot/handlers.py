@@ -1,5 +1,5 @@
 import logging
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from typing import Dict, Any
 
@@ -13,8 +13,9 @@ logger = logging.getLogger(__name__)
 class CommandHandlers:
     """Хендлеры команд Telegram бота"""
 
-    def __init__(self, api_client: APIClient):
+    def __init__(self, api_client: APIClient, query_handler=None):
         self.api_client = api_client
+        self.query_handler = query_handler
 
     def _get_user_data(self, update: Update) -> Dict[str, Any]:
         """Получение данных пользователя из update"""
@@ -36,7 +37,23 @@ class CommandHandlers:
             settings = await self.api_client.get_user_settings(user_id, token)
             lang = settings.get("preferred_language", "en")
             welcome_message = get_translation(lang, "start").format(name=user_data["first_name"] or "")
-            await update.message.reply_text(welcome_message)
+
+            # Создаем кликабельные примеры в зависимости от языка
+            if lang == "ru":
+                keyboard = [
+                    [InlineKeyboardButton("💰 Покажи текущее время", callback_data="ex:time_ru")],
+                    [InlineKeyboardButton("📊 Каков объем продаж в январе?", callback_data="ex:sales_ru")],
+                    [InlineKeyboardButton("🏆 Какой товар продается лучше всего?", callback_data="ex:bestseller_ru")],
+                ]
+            else:
+                keyboard = [
+                    [InlineKeyboardButton("💰 Show current time", callback_data="ex:time_en")],
+                    [InlineKeyboardButton("📊 What is the sales volume in January?", callback_data="ex:sales_en")],
+                    [InlineKeyboardButton("🏆 What is the best-selling product?", callback_data="ex:bestseller_en")],
+                ]
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(welcome_message, reply_markup=reply_markup)
         except Exception as e:
             logger.error(f"Error in start_command: {e}")
             await update.message.reply_text("❌ Error starting bot. Please try again.")
@@ -248,3 +265,88 @@ class CommandHandlers:
         except Exception as e:
             logger.error(f"Error in quick_lang_ru_command: {e}")
             await update.message.reply_text("❌ Ошибка при смене языка. Попробуйте еще раз.")
+
+    async def handle_example_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обработчик callback'ов от кнопок с примерами"""
+        logger.info(f"=== CALLBACK RECEIVED ===")
+        query = update.callback_query
+        logger.info(f"Callback data: {query.data}")
+        logger.info(f"User: {query.from_user.id}")
+
+        await query.answer()  # Подтверждаем получение callback
+
+        if query.data.startswith("ex:"):
+            # Маппинг коротких идентификаторов на полные запросы
+            examples = {
+                "time_ru": "Покажи текущее время",
+                "sales_ru": "Каков объем продаж в январе?",
+                "bestseller_ru": "Какой товар продается лучше всего?",
+                "time_en": "Show current time",
+                "sales_en": "What is the sales volume in January?",
+                "bestseller_en": "What is the best-selling product?",
+            }
+
+            # Извлекаем идентификатор из callback_data
+            example_id = query.data[3:]  # Убираем "ex:" префикс
+            example_query = examples.get(example_id, "Unknown example")
+
+            logger.info(f"Example button clicked by user {query.from_user.id}: {example_id} -> {example_query}")
+
+            # Отправляем сообщение пользователю что выбран пример
+            await query.message.reply_text(f"🎯 Вы выбрали: {example_query}\n\n💡 Сейчас выполню этот запрос...")
+
+            # Проверяем что query_handler доступен
+            if self.query_handler is None:
+                logger.error("QueryHandler не доступен")
+                await query.message.reply_text("❌ Ошибка: обработчик запросов недоступен")
+                return
+
+                # Вместо создания fake Update, выполняем запрос напрямую через API
+            # Для callback query нужно получить данные пользователя из query.from_user
+            user_data = {
+                "user_id": str(query.from_user.id),
+                "username": query.from_user.username,
+                "first_name": query.from_user.first_name,
+                "last_name": query.from_user.last_name,
+            }
+            user_id = user_data["user_id"]
+
+            try:
+                # Отправляем уведомление о том, что запрос обрабатывается
+                processing_msg = await query.message.reply_text("🔍 Обрабатываю ваш запрос...")
+
+                # Получаем токен аутентификации
+                token = await self.api_client.authenticate_user(user_id, user_data)
+
+                # Получаем настройки пользователя
+                settings = await self.api_client.get_user_settings(user_id, token)
+
+                # Выполняем запрос к API
+                result = await self.api_client.execute_query(example_query, user_id, token)
+
+                if result.get("success"):
+                    # Форматируем ответ для успешного запроса
+                    from formatters import MessageFormatter
+
+                    reply_message = MessageFormatter.format_query_result(result, settings)
+                else:
+                    # Обрабатываем ошибку API
+                    error_message = result.get("message", "Unknown error")
+                    from formatters import MessageFormatter
+
+                    safe_error = MessageFormatter.escape_markdown(error_message)
+                    reply_message = f"❌ *Ошибка:*\n{safe_error}"
+
+                # Отправляем результат
+                try:
+                    await query.message.reply_text(reply_message, parse_mode="Markdown")
+                except Exception as markdown_error:
+                    logger.error(f"Markdown parsing error: {markdown_error}")
+                    from formatters import MessageFormatter
+
+                    clean_message = MessageFormatter.clean_markdown(reply_message)
+                    await query.message.reply_text(clean_message)
+
+            except Exception as e:
+                logger.error(f"Error processing example query: {e}")
+                await query.message.reply_text("❌ Произошла ошибка при обработке запроса. Попробуйте еще раз.")

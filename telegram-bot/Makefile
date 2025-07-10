@@ -1,4 +1,4 @@
-.PHONY: help build up down logs clean restart shell local-build local-up local-down local-logs local-shell
+.PHONY: help build up down logs clean restart shell local-build local-up local-start local-down local-logs local-shell
 
 # Переменные
 COMPOSE_FILE = docker-compose.yml
@@ -21,7 +21,8 @@ help:
 	@echo ""
 	@echo "=== Local Development команды ==="
 	@echo "  local-build  - Собрать образ telegram-bot (local development)"
-	@echo "  local-up     - Запустить telegram-bot (local development)"
+	@echo "  local-up     - Собрать и запустить telegram-bot (local development)"
+	@echo "  local-start  - Запустить telegram-bot без сборки (local development)"
 	@echo "  local-down   - Остановить telegram-bot (local development)"
 	@echo "  local-logs   - Показать логи telegram-bot (local development)"
 	@echo "  local-shell  - Войти в контейнер telegram-bot (local development)"
@@ -64,6 +65,10 @@ local-build:
 	docker-compose -f $(COMPOSE_LOCAL_FILE) build
 
 local-up:
+	docker-compose -f $(COMPOSE_LOCAL_FILE) build
+	docker-compose -f $(COMPOSE_LOCAL_FILE) up -d
+
+local-start:
 	docker-compose -f $(COMPOSE_LOCAL_FILE) up -d
 
 local-down:

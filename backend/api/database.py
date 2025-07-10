@@ -65,8 +65,12 @@ async def execute_query(request: QueryRequest, user_id: str = Depends(security_s
         if not llm_service.is_configured:
             raise HTTPException(status_code=503, detail="LLM сервис недоступен")
 
-        # Получаем SQL запрос от LLM
-        llm_response = await llm_service.generate_sql_query(request.query)
+        # Получаем настройки пользователя для определения языка
+        user_settings = await user_service.get_user_settings(user_id)
+        user_language = user_settings.preferred_language if user_settings else "en"
+        
+        # Получаем SQL запрос от LLM с учетом языка пользователя
+        llm_response = await llm_service.generate_sql_query(request.query, user_language)
 
         if not llm_response.sql_query:
             # Если LLM не смог сгенерировать SQL

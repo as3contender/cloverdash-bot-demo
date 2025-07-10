@@ -2,7 +2,7 @@ import logging
 import os
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
 # Импортируем новые модули
 from api_client import APIClient
@@ -28,8 +28,8 @@ class CloverdashBot:
         self.api_client = APIClient(BACKEND_URL)
 
         # Инициализируем хендлеры
-        self.command_handlers = CommandHandlers(self.api_client)
         self.query_handler = QueryHandler(self.api_client)
+        self.command_handlers = CommandHandlers(self.api_client, self.query_handler)
         self.error_handler = ErrorHandler(self.api_client)
 
     def setup_handlers(self, application: Application) -> None:
@@ -44,6 +44,9 @@ class CloverdashBot:
         # Быстрые команды для смены языка
         application.add_handler(CommandHandler("en", self.command_handlers.quick_lang_en_command))
         application.add_handler(CommandHandler("ru", self.command_handlers.quick_lang_ru_command))
+
+        # Обработка callback'ов от inline кнопок
+        application.add_handler(CallbackQueryHandler(self.command_handlers.handle_example_callback))
 
         # Обработка текстовых сообщений (запросы)
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.query_handler.handle_query))

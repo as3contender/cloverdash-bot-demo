@@ -33,12 +33,13 @@ class LLMService:
             self.is_configured = False
             self.llm = None
 
-    async def generate_sql_query(self, natural_query: str) -> LLMQueryResponse:
+    async def generate_sql_query(self, natural_query: str, user_language: str = "en") -> LLMQueryResponse:
         """
         Генерирует SQL запрос на основе естественного языка
 
         Args:
             natural_query: Запрос на естественном языке
+            user_language: Язык пользователя для ответа ('en' или 'ru')
 
         Returns:
             LLMQueryResponse: Ответ с сгенерированным SQL запросом
@@ -51,7 +52,7 @@ class LLMService:
                 raise Exception("LLM сервис не настроен или недоступен")
 
             # Создаем промпт для генерации SQL
-            prompt = await self._create_sql_prompt(natural_query)
+            prompt = await self._create_sql_prompt(natural_query, user_language)
 
             # Отправляем запрос к OpenAI
             response = self.llm.invoke(prompt)
@@ -80,7 +81,7 @@ class LLMService:
             logger.error(f"LLM query generation failed after {execution_time:.2f}s: {str(e)}")
             raise Exception(f"Ошибка генерации SQL запроса: {str(e)}")
 
-    async def _create_sql_prompt(self, natural_query: str) -> str:
+    async def _create_sql_prompt(self, natural_query: str, user_language: str = "en") -> str:
         """Создает промпт для генерации SQL запроса"""
 
         # Получаем актуальную схему базы данных
@@ -119,9 +120,16 @@ SELECT name, email FROM users WHERE created_at > '2023-01-01' LIMIT 100;
 ```
 Этот запрос выбирает имена и email всех пользователей, созданных после 1 января 2023 года, с ограничением до 100 записей.
 
-Ответ выводи на английском языке.
+{self._get_language_instruction(user_language)}
 """
         return prompt
+
+    def _get_language_instruction(self, user_language: str) -> str:
+        """Возвращает инструкцию по языку ответа в зависимости от настроек пользователя"""
+        if user_language == "ru":
+            return "Ответ выводи на русском языке."
+        else:
+            return "Provide response in English."
 
     async def _get_database_schema(self) -> Dict[str, Any]:
         """Получение схемы базы данных пользовательских данных"""

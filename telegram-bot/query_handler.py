@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 from api_client import APIClient
 from formatters import MessageFormatter
-from translations import translations
+from translations import TRANSLATIONS
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class QueryHandler:
 
             # Отправляем уведомление о том, что запрос обрабатывается
             logger.info("Sending processing message...")
-            processing_text = translations[user_lang]["processing_request"]
+            processing_text = TRANSLATIONS[user_lang]["processing_request"]
             processing_msg = await update.message.reply_text(f"🔍 {processing_text}")
             logger.info(f"Processing message sent with ID: {processing_msg.message_id}")
 
@@ -72,7 +72,7 @@ class QueryHandler:
                 # Обрабатываем ошибку API - экранируем сообщение об ошибке
                 error_message = result.get("message", "Unknown error")
                 safe_error = MessageFormatter.escape_markdown(error_message)
-                error_text = translations[user_lang]["error_occurred"]
+                error_text = TRANSLATIONS[user_lang]["error_occurred"]
                 reply_message = f"❌ *{error_text}:*\n{safe_error}"
 
             # Отправляем результат как новое сообщение
@@ -91,7 +91,7 @@ class QueryHandler:
             logger.error(f"Exception in query processing: {str(e)}")
             logger.info("Sending exception message...")
             try:
-                error_text = translations[user_lang]["error_occurred"]
+                error_text = TRANSLATIONS[user_lang]["error_occurred"]
                 exception_msg = await update.message.reply_text(f"❌ {error_text}. Please try again later.")
                 logger.info(f"Exception message sent with ID: {exception_msg.message_id}")
             except Exception as send_error:
