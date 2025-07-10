@@ -1,4 +1,4 @@
-.PHONY: help build up down logs clean restart shell local-build local-up local-start local-down local-logs local-shell
+.PHONY: help build up down logs clean restart shell local-build local-up local-start local-down local-logs local-shell test test-unit test-integration test-cov install-dev
 
 # Переменные
 COMPOSE_FILE = docker-compose.yml
@@ -27,6 +27,13 @@ help:
 	@echo "  local-logs   - Показать логи telegram-bot (local development)"
 	@echo "  local-shell  - Войти в контейнер telegram-bot (local development)"
 	@echo "  local-rebuild- Полная пересборка для локальной разработки"
+	@echo ""
+	@echo "=== Testing команды ==="
+	@echo "  install-dev  - Установить зависимости для разработки"
+	@echo "  test         - Запустить все тесты"
+	@echo "  test-unit    - Запустить unit тесты"
+	@echo "  test-integration - Запустить integration тесты"
+	@echo "  test-cov     - Запустить тесты с отчетом о покрытии"
 
 # Команды для управления
 build:
@@ -94,4 +101,26 @@ local-clean:
 local-rebuild:
 	docker-compose -f $(COMPOSE_LOCAL_FILE) down
 	docker-compose -f $(COMPOSE_LOCAL_FILE) build --no-cache
-	docker-compose -f $(COMPOSE_LOCAL_FILE) up -d 
+	docker-compose -f $(COMPOSE_LOCAL_FILE) up -d
+
+# === Testing команды ===
+install-dev:
+	pip install -r requirements.txt
+
+test:
+	python -m pytest
+
+test-unit:
+	python -m pytest -m unit
+
+test-integration:
+	python -m pytest -m integration
+
+test-cov:
+	python -m pytest --cov=. --cov-report=html --cov-report=term-missing
+
+test-fast:
+	python -m pytest -x --tb=short
+
+test-verbose:
+	python -m pytest -v --tb=long 
