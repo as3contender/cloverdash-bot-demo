@@ -75,6 +75,8 @@ class Emoji:
     SEARCH = "🔍"
     SUCCESS = "✅"
     ERROR = "❌"
+    CROSS = "❌"  # Alias for ERROR
+    TARGET = "🎯"  # Target emoji for selections
     DATABASE = "📊"
     TABLE = "📋"
     VIEW = "👁️"
