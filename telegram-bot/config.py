@@ -89,3 +89,10 @@ class Emoji:
     TOOL = "🔧"
     NULL_VALUE = "∅"
     TIME = "⏱️"
+
+    # Aliases for convenience
+    CHECK = "✅"  # Alias for SUCCESS
+
+    # Flag emojis
+    FLAG_US = "🇺🇸"
+    FLAG_RU = "🇷🇺"

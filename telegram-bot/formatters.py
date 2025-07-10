@@ -59,13 +59,17 @@ class MessageFormatter:
         # Преобразуем в строку если еще не строка
         text = str(text)
 
-        # Экранируем только самые проблемные символы Markdown
-        # Это те, которые чаще всего вызывают ошибки парсинга
-        text = text.replace("_", "\\_")
+        # Убираем экранирование из бэкенда (обратные слеши)
+        text = text.replace("\\", "")
+
+        # Экранируем специальные символы Markdown в правильном порядке
         text = text.replace("*", "\\*")
+        text = text.replace("_", "\\_")
         text = text.replace("`", "\\`")
         text = text.replace("[", "\\[")
         text = text.replace("]", "\\]")
+        text = text.replace("(", "\\(")
+        text = text.replace(")", "\\)")
 
         return text
 
@@ -135,7 +139,7 @@ class MessageFormatter:
     def format_query_result(result: Dict[str, Any], settings: Dict[str, Any]) -> str:
         """Форматирование результата запроса с поддержкой многоязычности"""
         lang = settings.get("preferred_language", "en")
-        
+
         # Заголовок результата
         reply_message = f"*{get_translation(lang, 'query_result_title')}*\n\n"
 
@@ -147,24 +151,28 @@ class MessageFormatter:
             # Показываем первые несколько записей (до 5 для лучшей читаемости)
             max_records = min(5, data_count)
             for i, row in enumerate(result["data"][:max_records]):
-                reply_message += get_translation(lang, "record_number").format(num=i+1) + "\n"
-                
+                reply_message += get_translation(lang, "record_number").format(num=i + 1) + "\n"
+
                 # Форматируем поля более красиво
                 for key, value in row.items():
                     safe_key = MessageFormatter.escape_markdown(str(key))
-                    
+
                     # Улучшаем отображение значений
                     if value is None:
                         safe_value = "∅"  # Красивый символ для NULL
                     elif isinstance(value, (int, float)):
-                        safe_value = f"`{value}`"  # Числа в моноширинном шрифте
+                        # Форматируем числа с разделителями тысяч для лучшей читаемости
+                        if isinstance(value, float):
+                            safe_value = f"`{value:,.2f}`" if value != int(value) else f"`{int(value):,}`"
+                        else:
+                            safe_value = f"`{value:,}`"
                     elif isinstance(value, str) and len(value) > 50:
                         # Длинные строки сокращаем
                         truncated = value[:47] + "..." if len(value) > 50 else value
                         safe_value = f"_{MessageFormatter.escape_markdown(truncated)}_"
                     else:
                         safe_value = f"_{MessageFormatter.escape_markdown(str(value))}_"
-                    
+
                     reply_message += f"   • *{safe_key}*: {safe_value}\n"
                 reply_message += "\n"
 

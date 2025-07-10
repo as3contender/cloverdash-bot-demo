@@ -53,6 +53,18 @@ class QueryHandler:
             token, user_settings = await self.user_service.authenticate_and_get_settings(user_data)
             user_language = user_settings.preferred_language
 
+            # Добавляем детальную отладку настроек пользователя
+            logger.error(f"=== USER SETTINGS DEBUG ===")
+            logger.error(f"user_settings type: {type(user_settings)}")
+            logger.error(f"user_settings object: {user_settings}")
+            logger.error(f"preferred_language type: {type(user_settings.preferred_language)}")
+            logger.error(f"preferred_language value: {user_settings.preferred_language}")
+            if hasattr(user_settings.preferred_language, "value"):
+                logger.error(f"preferred_language.value: {user_settings.preferred_language.value}")
+            logger.error(f"show_explanation: {user_settings.show_explanation}")
+            logger.error(f"show_sql: {user_settings.show_sql}")
+            logger.error(f"=== END DEBUG ===")
+
             # Отправляем уведомление о том, что запрос обрабатывается
             logger.info("Sending processing message...")
             processing_text = get_translation(user_language.value, "processing_request")
@@ -84,8 +96,21 @@ class QueryHandler:
             logger.info(f"Backend response success: {query_result.success}")
 
             if query_result.success:
-                # Форматируем ответ для успешного запроса
-                reply_message = MessageFormatter.format_query_result(query_result.__dict__, user_settings.__dict__)
+                # Форматируем ответ для успешного запроса - преобразуем настройки для правильной работы с языком
+                # Исправленное извлечение значения языка из enum'а
+                lang_value = user_settings.preferred_language.value
+
+                settings_dict = {
+                    "preferred_language": lang_value,
+                    "show_explanation": user_settings.show_explanation,
+                    "show_sql": user_settings.show_sql,
+                }
+                logger.error(f"=== FORMATTING DEBUG ===")
+                logger.error(f"lang_value extracted: '{lang_value}' (type: {type(lang_value)})")
+                logger.error(f"settings_dict: {settings_dict}")
+                logger.error(f"=== END FORMATTING DEBUG ===")
+
+                reply_message = MessageFormatter.format_query_result(query_result.__dict__, settings_dict)
             else:
                 # Обрабатываем ошибку API - экранируем сообщение об ошибке
                 safe_error = MessageFormatter.escape_markdown(query_result.message or "Unknown error")

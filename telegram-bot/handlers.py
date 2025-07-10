@@ -71,12 +71,10 @@ class CommandHandlers:
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик команды /help"""
         user_data = self._get_user_data(update)
-        user_id = user_data["user_id"]
 
         try:
-            token = await self.api_client.authenticate_user(user_id, user_data)
-            settings = await self.api_client.get_user_settings(user_id, token)
-            lang = settings.get("preferred_language", "en")
+            token, user_settings = await self.user_service.authenticate_and_get_settings(user_data)
+            lang = user_settings.preferred_language.value
             help_message = (
                 get_translation(lang, "help") + "\n\n⚠️ Important: I only work with SELECT queries for data security."
             )
@@ -182,12 +180,12 @@ class CommandHandlers:
 
         try:
             # Получаем настройки пользователя
-            user_settings = await self.user_service.authenticate_and_get_settings(user_data)
+            token, user_settings = await self.user_service.authenticate_and_get_settings(user_data)
 
             if not context.args:
                 # Показываем текущие настройки
-                msg = get_translation(user_settings.preferred_language, "current_settings").format(
-                    lang=user_settings.preferred_language,
+                msg = get_translation(user_settings.preferred_language.value, "current_settings").format(
+                    lang=user_settings.preferred_language.value,
                     explanation=user_settings.show_explanation,
                     sql=user_settings.show_sql,
                 )
@@ -204,24 +202,26 @@ class CommandHandlers:
 
                     # Форматируем сообщение об успехе
                     if option == "lang":
-                        flag = Emoji.FLAG_US if value == "en" else Emoji.FLAG_RU
+                        flag = "🇺🇸" if value == "en" else "🇷🇺"
                         lang_name = "English" if value == "en" else "Русский"
-                        success_msg = get_translation(updated_settings.preferred_language, "settings_saved")
-                        success_msg += f"\n{Emoji.GLOBE} Language: {lang_name} {flag}"
+                        success_msg = get_translation(updated_settings.preferred_language.value, "settings_saved")
+                        success_msg += f"\n🌐 Language: {lang_name} {flag}"
                         await update.message.reply_text(success_msg)
                     else:
                         await update.message.reply_text(
-                            get_translation(updated_settings.preferred_language, "settings_saved")
+                            get_translation(updated_settings.preferred_language.value, "settings_saved")
                         )
 
                 except ValueError as e:
                     # Обрабатываем ошибки валидации
-                    error_msg = get_translation(user_settings.preferred_language, str(e))
+                    error_msg = get_translation(user_settings.preferred_language.value, str(e))
                     await update.message.reply_text(error_msg)
 
             else:
                 # Показываем help сообщение
-                await update.message.reply_text(get_translation(user_settings.preferred_language, "settings_usage"))
+                await update.message.reply_text(
+                    get_translation(user_settings.preferred_language.value, "settings_usage")
+                )
 
         except AuthenticationError as e:
             logger.error(f"Authentication error in settings_command: {e}")
@@ -311,10 +311,18 @@ class CommandHandlers:
                 query_result = await self.database_service.execute_query(user_data, token, example_query)
 
                 if query_result.success:
-                    # Форматируем ответ для успешного запроса
+                    # Форматируем ответ для успешного запроса - преобразуем настройки для правильной работы с языком
                     from formatters import MessageFormatter
 
-                    reply_message = MessageFormatter.format_query_result(query_result.__dict__, user_settings.__dict__)
+                    # Правильно извлекаем значение языка из enum'а
+                    settings_dict = {
+                        "preferred_language": user_settings.preferred_language.value,
+                        "show_explanation": user_settings.show_explanation,
+                        "show_sql": user_settings.show_sql,
+                    }
+                    logger.error(f"CALLBACK DEBUG: settings_dict={settings_dict}")
+
+                    reply_message = MessageFormatter.format_query_result(query_result.__dict__, settings_dict)
                 else:
                     # Обрабатываем ошибку API
                     from formatters import MessageFormatter
