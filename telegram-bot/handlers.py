@@ -54,21 +54,19 @@ class CommandHandlers:
             token, settings = await self.user_service.authenticate_and_get_settings(user_data)
 
             # Создаем приветственное сообщение
-            welcome_message = self.message_service.get_welcome_message(
-                settings.preferred_language, user_data.first_name
-            )
+            welcome_message = MessageService.create_welcome_message(user_data, settings.preferred_language)
 
             # Создаем клавиатуру с примерами через KeyboardService
-            keyboard = self.keyboard_service.create_examples_keyboard(settings.preferred_language)
+            keyboard = KeyboardService.create_example_keyboard(settings.preferred_language)
 
             await update.message.reply_text(welcome_message, reply_markup=keyboard)
 
         except AuthenticationError as e:
             logger.error(f"Authentication error in start_command: {e}")
-            await update.message.reply_text(f"{Emoji.ERROR} Authentication failed. Please try again.")
+            await update.message.reply_text(f"{Emoji.CROSS} Authentication failed. Please try again.")
         except Exception as e:
             logger.error(f"Error in start_command: {e}")
-            await update.message.reply_text(f"{Emoji.ERROR} Error starting bot. Please try again.")
+            await update.message.reply_text(f"{Emoji.CROSS} Error starting bot. Please try again.")
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик команды /help"""
