@@ -273,69 +273,58 @@ class CommandHandlers:
 
         await query.answer()  # Подтверждаем получение callback
 
-        if query.data.startswith("ex:"):
-            # Маппинг коротких идентификаторов на полные запросы
-            examples = {
-                "time_ru": "Покажи текущее время",
-                "sales_ru": "Каков объем продаж в январе?",
-                "bestseller_ru": "Какой товар продается лучше всего?",
-                "time_en": "Show current time",
-                "sales_en": "What is the sales volume in January?",
-                "bestseller_en": "What is the best-selling product?",
-            }
-
-            # Извлекаем идентификатор из callback_data
-            example_id = query.data[3:]  # Убираем "ex:" префикс
-            example_query = examples.get(example_id, "Unknown example")
-
-            logger.info(f"Example button clicked by user {query.from_user.id}: {example_id} -> {example_query}")
-
-            # Отправляем сообщение пользователю что выбран пример
-            await query.message.reply_text(f"🎯 Вы выбрали: {example_query}\n\n💡 Сейчас выполню этот запрос...")
-
-            # Проверяем что query_handler доступен
-            if self.query_handler is None:
-                logger.error("QueryHandler не доступен")
-                await query.message.reply_text("❌ Ошибка: обработчик запросов недоступен")
-                return
-
-                # Вместо создания fake Update, выполняем запрос напрямую через API
-            # Для callback query нужно получить данные пользователя из query.from_user
-            user_data = {
-                "user_id": str(query.from_user.id),
-                "username": query.from_user.username,
-                "first_name": query.from_user.first_name,
-                "last_name": query.from_user.last_name,
-            }
-            user_id = user_data["user_id"]
-
+        if query.data.startswith(CallbackData.EXAMPLE_PREFIX):
             try:
+                # Получаем текст запроса через MessageService
+                example_query = MessageService.get_example_query(query.data)
+                if not example_query:
+                    logger.warning(f"Unknown example ID: {query.data}")
+                    await query.message.reply_text(f"{Emoji.CROSS} Unknown example selected")
+                    return
+
+                # Создаем UserData из callback query
+                user_data = UserData(
+                    user_id=str(query.from_user.id),
+                    username=query.from_user.username,
+                    first_name=query.from_user.first_name,
+                    last_name=query.from_user.last_name,
+                )
+
+                logger.info(f"Example button clicked by user {user_data.user_id}: {example_query}")
+
+                # Отправляем сообщение пользователю что выбран пример
+                await query.message.reply_text(
+                    f"{Emoji.TARGET} Вы выбрали: {example_query}\n\n{Emoji.LIGHTBULB} Сейчас выполню этот запрос..."
+                )
+
+                # Проверяем что query_handler доступен
+                if self.query_handler is None:
+                    logger.error("QueryHandler не доступен")
+                    await query.message.reply_text(f"{Emoji.CROSS} Ошибка: обработчик запросов недоступен")
+                    return
+
                 # Отправляем уведомление о том, что запрос обрабатывается
-                processing_msg = await query.message.reply_text("🔍 Обрабатываю ваш запрос...")
+                processing_msg = await query.message.reply_text(f"{Emoji.SEARCH} Обрабатываю ваш запрос...")
 
-                # Получаем токен аутентификации
-                token = await self.api_client.authenticate_user(user_id, user_data)
+                # Получаем токен и настройки пользователя
+                token, user_settings = await self.user_service.authenticate_and_get_settings(user_data)
 
-                # Получаем настройки пользователя
-                settings = await self.api_client.get_user_settings(user_id, token)
+                # Выполняем запрос через DatabaseService
+                query_result = await self.database_service.execute_query(user_data, token, example_query)
 
-                # Выполняем запрос к API
-                result = await self.api_client.execute_query(example_query, user_id, token)
-
-                if result.get("success"):
+                if query_result.success:
                     # Форматируем ответ для успешного запроса
                     from formatters import MessageFormatter
 
-                    reply_message = MessageFormatter.format_query_result(result, settings)
+                    reply_message = MessageFormatter.format_query_result(query_result.__dict__, user_settings.__dict__)
                 else:
                     # Обрабатываем ошибку API
-                    error_message = result.get("message", "Unknown error")
                     from formatters import MessageFormatter
 
-                    safe_error = MessageFormatter.escape_markdown(error_message)
-                    reply_message = f"❌ *Ошибка:*\n{safe_error}"
+                    safe_error = MessageFormatter.escape_markdown(query_result.message or "Unknown error")
+                    reply_message = f"{Emoji.CROSS} *Ошибка:*\n{safe_error}"
 
-                # Отправляем результат
+                # Отправляем результат с обработкой markdown ошибок
                 try:
                     await query.message.reply_text(reply_message, parse_mode="Markdown")
                 except Exception as markdown_error:
@@ -345,6 +334,11 @@ class CommandHandlers:
                     clean_message = MessageFormatter.clean_markdown(reply_message)
                     await query.message.reply_text(clean_message)
 
+            except AuthenticationError as e:
+                logger.error(f"Authentication error in handle_example_callback: {e}")
+                await query.message.reply_text(f"{Emoji.CROSS} Authentication failed. Please try /start")
             except Exception as e:
                 logger.error(f"Error processing example query: {e}")
-                await query.message.reply_text("❌ Произошла ошибка при обработке запроса. Попробуйте еще раз.")
+                await query.message.reply_text(
+                    f"{Emoji.CROSS} Произошла ошибка при обработке запроса. Попробуйте еще раз."
+                )
