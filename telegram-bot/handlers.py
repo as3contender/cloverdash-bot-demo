@@ -3,6 +3,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from typing import Dict, Any
 
+# Новые импорты
+from models import UserData, UserSettings, Language
+from services import UserService, DatabaseService, KeyboardService, MessageService
+from exceptions import AuthenticationError, ValidationError, BotException
+from config import CallbackData, Emoji
+
+# Старые импорты (пока оставляем для совместимости)
 from api_client import APIClient
 from formatters import MessageFormatter
 from translations import get_translation
@@ -13,12 +20,23 @@ logger = logging.getLogger(__name__)
 class CommandHandlers:
     """Хендлеры команд Telegram бота"""
 
-    def __init__(self, api_client: APIClient, query_handler=None):
+    def __init__(self, api_client: APIClient, query_handler=None, user_service=None, database_service=None):
         self.api_client = api_client
         self.query_handler = query_handler
 
-    def _get_user_data(self, update: Update) -> Dict[str, Any]:
+        # Новые сервисы
+        self.user_service = user_service or UserService(api_client)
+        self.database_service = database_service or DatabaseService(api_client)
+        self.keyboard_service = KeyboardService()
+        self.message_service = MessageService()
+
+    def _get_user_data(self, update: Update) -> UserData:
         """Получение данных пользователя из update"""
+        user = update.effective_user
+        return UserData.from_telegram_user(user)
+
+    def _get_user_data_dict(self, update: Update) -> Dict[str, Any]:
+        """Получение данных пользователя как словарь (для совместимости)"""
         user = update.effective_user
         return {
             "user_id": str(user.id),
@@ -28,35 +46,29 @@ class CommandHandlers:
         }
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Обработчик команды /start"""
+        """Обработчик команды /start с новой архитектурой"""
         user_data = self._get_user_data(update)
-        user_id = user_data["user_id"]
 
         try:
-            token = await self.api_client.authenticate_user(user_id, user_data)
-            settings = await self.api_client.get_user_settings(user_id, token)
-            lang = settings.get("preferred_language", "en")
-            welcome_message = get_translation(lang, "start").format(name=user_data["first_name"] or "")
+            # Аутентификация и получение настроек через UserService
+            token, settings = await self.user_service.authenticate_and_get_settings(user_data)
 
-            # Создаем кликабельные примеры в зависимости от языка
-            if lang == "ru":
-                keyboard = [
-                    [InlineKeyboardButton("💰 Покажи текущее время", callback_data="ex:time_ru")],
-                    [InlineKeyboardButton("📊 Каков объем продаж в январе?", callback_data="ex:sales_ru")],
-                    [InlineKeyboardButton("🏆 Какой товар продается лучше всего?", callback_data="ex:bestseller_ru")],
-                ]
-            else:
-                keyboard = [
-                    [InlineKeyboardButton("💰 Show current time", callback_data="ex:time_en")],
-                    [InlineKeyboardButton("📊 What is the sales volume in January?", callback_data="ex:sales_en")],
-                    [InlineKeyboardButton("🏆 What is the best-selling product?", callback_data="ex:bestseller_en")],
-                ]
+            # Создаем приветственное сообщение
+            welcome_message = self.message_service.get_welcome_message(
+                settings.preferred_language, user_data.first_name
+            )
 
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(welcome_message, reply_markup=reply_markup)
+            # Создаем клавиатуру с примерами через KeyboardService
+            keyboard = self.keyboard_service.create_examples_keyboard(settings.preferred_language)
+
+            await update.message.reply_text(welcome_message, reply_markup=keyboard)
+
+        except AuthenticationError as e:
+            logger.error(f"Authentication error in start_command: {e}")
+            await update.message.reply_text(f"{Emoji.ERROR} Authentication failed. Please try again.")
         except Exception as e:
             logger.error(f"Error in start_command: {e}")
-            await update.message.reply_text("❌ Error starting bot. Please try again.")
+            await update.message.reply_text(f"{Emoji.ERROR} Error starting bot. Please try again.")
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик команды /help"""

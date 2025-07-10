@@ -34,9 +34,11 @@ class CloverdashBot:
         self.user_service = UserService(self.api_client)
         self.database_service = DatabaseService(self.api_client)
 
-        # Инициализируем хендлеры
+        # Инициализируем хендлеры с сервисами
         self.query_handler = QueryHandler(self.api_client)
-        self.command_handlers = CommandHandlers(self.api_client, self.query_handler)
+        self.command_handlers = CommandHandlers(
+            self.api_client, self.query_handler, self.user_service, self.database_service
+        )
         self.error_handler = ErrorHandler(self.api_client)
 
     def setup_handlers(self, application: Application) -> None:
