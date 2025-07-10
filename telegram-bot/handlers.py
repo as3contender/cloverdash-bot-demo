@@ -90,31 +90,23 @@ class CommandHandlers:
     async def tables_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик команды /tables для показа доступных таблиц"""
         user_data = self._get_user_data(update)
-        user_id = user_data["user_id"]
-
-        logger.info(f"Tables list requested by user {user_id}")
+        logger.info(f"Tables list requested by user {user_data.user_id}")
 
         try:
             # Отправляем сообщение о обработке
-            processing_msg = await update.message.reply_text("🔍 Getting list of available tables...")
+            processing_msg = await update.message.reply_text(f"{Emoji.SEARCH} Getting list of available tables...")
 
-            # Получаем токен аутентификации
-            token = await self.api_client.authenticate_user(user_id, user_data)
+            # Получаем токен и список таблиц через DatabaseService
+            token, _ = await self.user_service.authenticate_and_get_settings(user_data)
+            tables = await self.database_service.get_tables(user_data, token)
 
-            # Получаем список таблиц
-            result = await self.api_client.get_tables(token)
-
-            if result.get("success") and result.get("tables"):
-                tables = result["tables"]
-                database_name = result.get("database_name", "unknown")
-
-                # Форматируем ответ
-                reply_message = MessageFormatter.format_tables_list(tables, database_name)
-
+            if tables:
+                # Форматируем ответ через MessageService
+                reply_message = MessageFormatter.format_tables_list([table.__dict__ for table in tables], "database")
             else:
-                reply_message = "📊 No tables found in the database"
+                reply_message = f"{Emoji.DATABASE} No tables found in the database"
 
-            # Отправляем результат
+            # Отправляем результат с обработкой markdown ошибок
             try:
                 await update.message.reply_text(reply_message, parse_mode="Markdown")
             except Exception as markdown_error:
@@ -123,49 +115,51 @@ class CommandHandlers:
                 clean_message = MessageFormatter.clean_markdown(reply_message)
                 await update.message.reply_text(clean_message)
 
+        except AuthenticationError as e:
+            logger.error(f"Authentication error in tables_command: {e}")
+            await update.message.reply_text(f"{Emoji.CROSS} Authentication failed. Please try /start")
         except Exception as e:
             logger.error(f"Error in tables_command: {e}")
-            await update.message.reply_text("❌ An error occurred getting tables list. Please try again.")
+            await update.message.reply_text(f"{Emoji.CROSS} An error occurred getting tables list. Please try again.")
 
     async def sample_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик команды /sample для показа образца данных из таблицы"""
         user_data = self._get_user_data(update)
-        user_id = user_data["user_id"]
 
         # Получаем имя таблицы из аргументов команды
         if not context.args:
             await update.message.reply_text(
-                "❌ Please specify a table name!\n\n" "Usage: /sample <table_name>\n" "Example: /sample bills_view"
+                f"{Emoji.CROSS} Please specify a table name!\n\n"
+                "Usage: /sample <table_name>\n"
+                "Example: /sample bills_view"
             )
             return
 
         table_name = " ".join(context.args)  # Обрабатываем имена таблиц с пробелами/точками
 
-        logger.info(f"Sample command requested by user {user_id} for table: {table_name}")
-
         try:
+            # Валидация имени таблицы
+            validated_table_name = ValidationService.validate_table_name(table_name)
+            logger.info(f"Sample command requested by user {user_data.user_id} for table: {validated_table_name}")
+
             # Отправляем сообщение о обработке
-            processing_msg = await update.message.reply_text(f"🔍 Getting sample data from `{table_name}`...")
+            processing_msg = await update.message.reply_text(
+                f"{Emoji.SEARCH} Getting sample data from `{validated_table_name}`..."
+            )
 
-            # Получаем токен аутентификации
-            token = await self.api_client.authenticate_user(user_id, user_data)
+            # Получаем токен и образец данных через DatabaseService
+            token, _ = await self.user_service.authenticate_and_get_settings(user_data)
+            query_result = await self.database_service.get_table_sample(user_data, token, validated_table_name)
 
-            # Получаем образец данных
-            result = await self.api_client.get_table_sample(table_name, token)
-
-            if result.get("success") and result.get("data"):
-                data = result["data"]
-                reply_message = MessageFormatter.format_sample_data(data, table_name)
-
-            elif result.get("success") and not result.get("data"):
-                reply_message = f"📊 Table `{table_name}` is empty (no records found)"
-
+            if query_result.success and query_result.data:
+                reply_message = MessageFormatter.format_sample_data(query_result.data, validated_table_name)
+            elif query_result.success and not query_result.data:
+                reply_message = f"{Emoji.DATABASE} Table `{validated_table_name}` is empty (no records found)"
             else:
-                error_msg = result.get("message", "Unknown error")
-                safe_error = MessageFormatter.escape_markdown(error_msg)
-                reply_message = f"❌ *Error:*\n{safe_error}"
+                safe_error = MessageFormatter.escape_markdown(query_result.message or "Unknown error")
+                reply_message = f"{Emoji.CROSS} *Error:*\n{safe_error}"
 
-            # Отправляем результат
+            # Отправляем результат с обработкой markdown ошибок
             try:
                 await update.message.reply_text(reply_message, parse_mode="Markdown")
             except Exception as markdown_error:
@@ -174,9 +168,15 @@ class CommandHandlers:
                 clean_message = MessageFormatter.clean_markdown(reply_message)
                 await update.message.reply_text(clean_message)
 
+        except ValidationError as e:
+            logger.error(f"Validation error in sample_command: {e}")
+            await update.message.reply_text(f"{Emoji.CROSS} {str(e)}")
+        except AuthenticationError as e:
+            logger.error(f"Authentication error in sample_command: {e}")
+            await update.message.reply_text(f"{Emoji.CROSS} Authentication failed. Please try /start")
         except Exception as e:
             logger.error(f"Error in sample_command: {e}")
-            await update.message.reply_text("❌ An error occurred getting sample data. Please try again.")
+            await update.message.reply_text(f"{Emoji.CROSS} An error occurred getting sample data. Please try again.")
 
     async def settings_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик команды /settings для изменения пользовательских настроек"""
