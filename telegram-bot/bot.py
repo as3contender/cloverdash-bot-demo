@@ -35,7 +35,7 @@ class CloverdashBot:
         self.database_service = DatabaseService(self.api_client)
 
         # Инициализируем хендлеры с сервисами
-        self.query_handler = QueryHandler(self.api_client)
+        self.query_handler = QueryHandler(self.api_client, self.user_service, self.database_service)
         self.command_handlers = CommandHandlers(
             self.api_client, self.query_handler, self.user_service, self.database_service
         )
