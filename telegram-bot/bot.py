@@ -27,8 +27,8 @@ class CloverdashBot:
     def __init__(self, config: BotConfig):
         self.config = config
 
-        # Инициализируем API клиент
-        self.api_client = APIClient(config.backend_url)
+        # Инициализируем API клиент с конфигурацией
+        self.api_client = APIClient(config.backend_url, config)
 
         # Инициализируем сервисы
         self.user_service = UserService(self.api_client)
