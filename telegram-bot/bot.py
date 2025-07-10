@@ -1,10 +1,15 @@
 import logging
-import os
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
-# Импортируем новые модули
+# Новые импорты
+from config import Config, BotConfig
+from models import UserData
+from services import UserService, DatabaseService, KeyboardService, ValidationService, MessageService
+from exceptions import ConfigurationError, BotException
+
+# Остальные импорты
 from api_client import APIClient
 from handlers import CommandHandlers
 from query_handler import QueryHandler
@@ -17,15 +22,17 @@ load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
-
 
 class CloverdashBot:
-    def __init__(self):
+    def __init__(self, config: BotConfig):
+        self.config = config
+
         # Инициализируем API клиент
-        self.api_client = APIClient(BACKEND_URL)
+        self.api_client = APIClient(config.backend_url)
+
+        # Инициализируем сервисы
+        self.user_service = UserService(self.api_client)
+        self.database_service = DatabaseService(self.api_client)
 
         # Инициализируем хендлеры
         self.query_handler = QueryHandler(self.api_client)
@@ -40,7 +47,7 @@ class CloverdashBot:
         application.add_handler(CommandHandler("tables", self.command_handlers.tables_command))
         application.add_handler(CommandHandler("sample", self.command_handlers.sample_command))
         application.add_handler(CommandHandler("settings", self.command_handlers.settings_command))
-        
+
         # Быстрые команды для смены языка
         application.add_handler(CommandHandler("en", self.command_handlers.quick_lang_en_command))
         application.add_handler(CommandHandler("ru", self.command_handlers.quick_lang_ru_command))
@@ -57,28 +64,34 @@ class CloverdashBot:
 
 def main():
     """Запуск бота"""
-    if not TELEGRAM_TOKEN:
-        logger.error("TELEGRAM_TOKEN not found in environment variables")
-        print("❌ Error: TELEGRAM_TOKEN not found in environment variables")
-        print("📝 Add it to the .env file:")
-        print("TELEGRAM_TOKEN=your_bot_token_here")
-        return
+    try:
+        # Загружаем конфигурацию
+        config = Config.load_from_env()
 
-    print(f"🚀 Starting CloverdashBot...")
-    print(f"🔗 Backend URL: {BACKEND_URL}")
+        print(f"🚀 Starting CloverdashBot...")
+        print(f"🔗 Backend URL: {config.backend_url}")
+        print(f"📊 Config: retries={config.max_retries}, timeout={config.request_timeout}s")
 
-    # Создаем приложение
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+        # Создаем приложение
+        application = Application.builder().token(config.telegram_token).build()
 
-    # Создаем экземпляр бота
-    bot = CloverdashBot()
+        # Создаем экземпляр бота
+        bot = CloverdashBot(config)
 
-    # Настраиваем хендлеры
-    bot.setup_handlers(application)
+        # Настраиваем хендлеры
+        bot.setup_handlers(application)
 
-    # Запускаем бота
-    logger.info("Starting CloverdashBot...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+        # Запускаем бота
+        logger.info("Starting CloverdashBot with new architecture...")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    except ConfigurationError as e:
+        logger.error(f"Configuration error: {e}")
+        print(f"❌ Configuration error: {e}")
+        print("📝 Check your .env file and environment variables")
+    except Exception as e:
+        logger.error(f"Failed to start bot: {e}")
+        print(f"❌ Failed to start bot: {e}")
 
 
 if __name__ == "__main__":
