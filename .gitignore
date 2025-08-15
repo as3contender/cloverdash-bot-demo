@@ -1,3 +1,9 @@
+# Admin Panel
+admin-panel/.env
+admin-panel/*.log
+admin-panel/__pycache__/
+admin-panel/.streamlit/
+
 # Environment variables
 .env
 .env.local
