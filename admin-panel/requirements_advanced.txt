@@ -1,0 +1,18 @@
+# Основные зависимости
+streamlit>=1.47.0
+pandas>=2.3.1
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+python-dotenv>=1.0.0
+
+# Для экспорта в Excel
+openpyxl>=3.1.0
+
+# Для работы с JSON
+jsonschema>=4.25.0
+
+# Для логирования и утилит
+python-dateutil>=2.9.0
+
+# Для хеширования паролей
+werkzeug>=3.0.0 
