@@ -65,7 +65,7 @@ status:
 rebuild:
 	docker-compose -f $(COMPOSE_FILE) down
 	docker-compose -f $(COMPOSE_FILE) build --no-cache
-	docker-compose -f $(COMPOSE_FILE) up -d
+	docker-compose -f $(COMPOSE_FILE) up -d 
 
 # === Local Development команды ===
 local-build:

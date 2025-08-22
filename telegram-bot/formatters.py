@@ -203,3 +203,4 @@ class MessageFormatter:
             reply_message += get_translation(lang, "execution_time").format(time=execution_time)
 
         return reply_message
+ 

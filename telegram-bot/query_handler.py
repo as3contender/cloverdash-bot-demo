@@ -149,3 +149,4 @@ class QueryHandler:
                 logger.error(f"Error sending exception message: {send_error}")
 
         logger.info("=== QUERY PROCESSING COMPLETED ===")
+ 

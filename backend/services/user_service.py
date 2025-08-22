@@ -266,7 +266,7 @@ class UserService:
                     row["show_sql"] = settings.get("show_sql", False)
                     # Убираем settings_json из словаря, так как его нет в модели UserSettings
                     row.pop("settings_json", None)
-                    return UserSettings(**row)
+                return UserSettings(**row)
             return None
         except Exception as e:
             logger.error(f"Error getting settings for user {user_id}: {e}")
@@ -311,7 +311,7 @@ class UserService:
                 import json
 
                 params.append(json.dumps(settings_json))  # Конвертируем в JSON строку
-                fields.append(f"settings_json = ${len(params)}")
+            fields.append(f"settings_json = ${len(params)}")
 
             # Если нет полей для обновления, возвращаем текущие настройки
             if not fields:

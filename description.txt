@@ -28,3 +28,28 @@
 [Telegram Bot] <---> [FastAPI Backend] <---> [DB + Langchain/OpenAI]
                                       |
                         [Контекстная схема БД]
+
+
+
+
+Я хочу собрать шаблон для похожих проектов:
+Database - PostgreSQL
+Backend - FastAPI
+Структура:
+- api
+- config
+- models
+    - auth (Включает в себя классы User, Tocken)
+    - database
+- servises
+    - database
+    - llm_serice
+    - security
+    - user_service
+Client - Telegram Bot
+- bot (Логика самого бота)
+- handlers
+- api_client (собранный по api бекенда)
+
+
+Проанализируй этот проект и сформируй описание для шаблона, затем по этому описанию сделаю отдельный проект и сгенерирую код

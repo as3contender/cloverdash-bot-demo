@@ -307,7 +307,16 @@ else
 fi
 
 # Prepare RSYNC command for file transfers
-RSYNC_CMD=$(echo $SSH_CMD | sed 's/ssh/rsync -e ssh/')
+if [ -n "$SSH_KEY" ] && [ "$SSH_KEY" != "" ]; then
+    SSH_KEY_EXPANDED=$(eval echo $SSH_KEY)
+    if [ -f "$SSH_KEY_EXPANDED" ]; then
+        RSYNC_CMD="rsync -e 'ssh $SSH_BASE_OPTIONS -i $SSH_KEY_EXPANDED'"
+    else
+        RSYNC_CMD="rsync -e 'ssh $SSH_BASE_OPTIONS'"
+    fi
+else
+    RSYNC_CMD="rsync -e 'ssh $SSH_BASE_OPTIONS'"
+fi
 
 # Test SSH connection first
 echo -e "${BLUE}🔐 Testing SSH connection...${NC}"
@@ -446,7 +455,7 @@ if [ "$DEPLOY_BOT" = true ]; then
         cd $REMOTE_DEPLOY_DIR/telegram-bot
         
         # Set backend URL to container name for inter-container communication
-        sed -i "s|BACKEND_URL=.*|BACKEND_URL=http://cloverdash_backend:8000|" .env 2>/dev/null || true
+        sed -i "s#BACKEND_URL=.*#BACKEND_URL=http://cloverdash_backend:8000#" .env 2>/dev/null || true
         
         # Build and start bot
         docker-compose down --remove-orphans 2>/dev/null || true
