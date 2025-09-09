@@ -70,7 +70,7 @@ async def execute_query(request: QueryRequest, user_id: str = Depends(security_s
         user_language = user_settings.preferred_language if user_settings else "en"
         
         # Получаем SQL запрос от LLM с учетом языка пользователя
-        llm_response = await llm_service.generate_sql_query(request.query, user_language)
+        llm_response = await llm_service.generate_sql_query_with_user_permissions(request.query, user_id, user_language)
 
         if not llm_response.sql_query:
             # Если LLM не смог сгенерировать SQL
@@ -88,7 +88,7 @@ async def execute_query(request: QueryRequest, user_id: str = Depends(security_s
             )
 
         # Выполняем SQL запрос в базе данных пользовательских данных
-        db_result = await data_database_service.execute_query(llm_response.sql_query)
+        db_result = await data_database_service.execute_query_with_user(llm_response.sql_query, user_id)
 
         # Сохраняем историю запроса
         await user_service.save_user_query_history(

@@ -27,7 +27,7 @@ class UserService:
     async def create_user_table():
         """Создание таблицы пользователей и других таблиц приложения"""
         try:
-            await app_database_service.create_app_tables()
+            #await app_database_service.create_app_tables()
             logger.info("User tables created successfully")
         except Exception as e:
             logger.error(f"Error creating user tables: {e}")

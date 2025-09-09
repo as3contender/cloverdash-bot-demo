@@ -8,6 +8,10 @@ import json
 import logging
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения из .env файла
+load_dotenv()
 
 # Добавляем путь к backend для импорта модулей
 sys.path.append(str(Path(__file__).parent))

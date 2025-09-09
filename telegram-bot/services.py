@@ -141,7 +141,7 @@ class KeyboardService:
                 ],
                 [
                     InlineKeyboardButton(
-                        f"{Emoji.DATABASE} Каков объем продаж в январе?",
+                        f"{Emoji.DATABASE} Какова общая сумма продаж в январе?",
                         callback_data=f"{CallbackData.EXAMPLE_PREFIX}{CallbackData.SALES_RU}",
                     )
                 ],
@@ -162,13 +162,13 @@ class KeyboardService:
                 ],
                 [
                     InlineKeyboardButton(
-                        f"{Emoji.DATABASE} What is the sales volume in January?",
+                        f"{Emoji.DATABASE} What is the total sales amount in January?",
                         callback_data=f"{CallbackData.EXAMPLE_PREFIX}{CallbackData.SALES_EN}",
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        f"{Emoji.LIGHTBULB} What is the best-selling product?",
+                        f"{Emoji.LIGHTBULB} What is the best-selling product by quantity?",
                         callback_data=f"{CallbackData.EXAMPLE_PREFIX}{CallbackData.BESTSELLER_EN}",
                     )
                 ],

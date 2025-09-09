@@ -36,7 +36,7 @@ class UserData:
 class UserSettings:
     """Настройки пользователя"""
 
-    preferred_language: Language = Language.ENGLISH
+    preferred_language: Language = Language.RUSSIAN
     show_explanation: bool = True
     show_sql: bool = False
 
@@ -44,7 +44,7 @@ class UserSettings:
     def from_dict(cls, data: Dict[str, Any]) -> "UserSettings":
         """Создание из словаря"""
         return cls(
-            preferred_language=Language(data.get("preferred_language", "en")),
+            preferred_language=Language(data.get("preferred_language", "ru")),
             show_explanation=data.get("show_explanation", True),
             show_sql=data.get("show_sql", False),
         )

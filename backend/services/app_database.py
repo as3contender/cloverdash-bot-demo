@@ -185,6 +185,16 @@ class AppDatabaseService:
             result = await self.execute_query(query, [database_name, schema_name, table_name])
             if result.data:
                 description = result.data[0]["table_description"]
+                
+                # Парсим JSON строку если нужно
+                if isinstance(description, str):
+                    try:
+                        import json
+                        description = json.loads(description)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse JSON description for {database_name}.{schema_name}.{table_name}")
+                        return None
+                
                 # Добавляем информацию о типе объекта в описание
                 if isinstance(description, dict):
                     description["object_type"] = result.data[0]["object_type"]
@@ -278,22 +288,13 @@ class AppDatabaseService:
                     dd.created_at,
                     dd.updated_at
                 FROM database_descriptions dd
-                LEFT JOIN user_permissions up ON 
-                    dd.table_name = up.table_name AND
-                    up.role_name = (
-                        SELECT role_name 
-                        FROM users_role_bd_mapping 
-                        WHERE user_id = $1
-                    )
-                WHERE dd.database_name = $2
-                AND (
-                    up.role_name IS NOT NULL  -- Пользователь имеет права через роль
-                    OR NOT EXISTS (           -- Или для этой таблицы нет никаких ограничений
-                        SELECT 1 FROM user_permissions up2 
-                        WHERE up2.table_name = dd.table_name
-                    )
-                )
-                ORDER BY dd.schema_name, dd.table_name
+                INNER JOIN user_permissions tp 
+                 inner join users_role_bd_mapping um on tp.role_name = um.role_name and um.user_id = $1
+                ON
+                    dd.database_name = tp.database_name AND
+                    dd.schema_name = tp.schema_name AND
+                    dd.table_name = tp.table_name
+               WHERE dd.database_name = $2
                 """
 
                 result = await self.execute_query(query, [user_id, database_name])
@@ -705,6 +706,8 @@ class AppDatabaseService:
                 key = f"{table['schema_name']}.{table['table_name']}"
                 accessible_set.add(key)
             
+            logger.info(f"User {user_id} has access to {len(accessible_set)} tables: {list(accessible_set)}")
+            
             # Фильтруем описания
             filtered = {}
             for key, description in descriptions.items():
@@ -714,6 +717,9 @@ class AppDatabaseService:
                     table_key = f"{parts[-2]}.{parts[-1]}"  # schema.table
                     if table_key in accessible_set:
                         filtered[key] = description
+                        logger.info(f"✅ Added {key} to filtered descriptions")
+                    else:
+                        logger.info(f"❌ Skipped {key} - not in accessible set")
             
             logger.info(f"Filtered {len(descriptions)} descriptions to {len(filtered)} accessible for user {user_id}")
             return filtered
