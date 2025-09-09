@@ -60,11 +60,11 @@ class CallbackData:
     # Маппинг на полные запросы
     EXAMPLES_MAP = {
         TIME_RU: "Покажи текущее время",
-        SALES_RU: "Каков объем продаж в январе?",
-        BESTSELLER_RU: "Какой товар продается лучше всего?",
+        SALES_RU: "Какова общая сумма продаж в январе 2025 года?",
+        BESTSELLER_RU: "Какой товар продается лучше всего по количеству?",
         TIME_EN: "Show current time",
-        SALES_EN: "What is the sales volume in January?",
-        BESTSELLER_EN: "What is the best-selling product?",
+        SALES_EN: "What is the total sales amount in January 2025?",
+        BESTSELLER_EN: "What is the best-selling product by quantity?",
     }
 
 

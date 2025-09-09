@@ -100,6 +100,164 @@ class DataDatabaseService:
             logger.error(f"Data database query failed: {str(e)}")
             raise Exception(f"Query execution failed: {str(e)}")
 
+    async def execute_query_with_user(self, query: str, user_id: str) -> DatabaseQueryResult:
+        """
+        Выполнение SQL запроса от имени конкретного пользователя с использованием его роли
+        
+        Args:
+            query: SQL запрос для выполнения
+            user_id: ID пользователя, от имени которого выполняется запрос
+            
+        Returns:
+            DatabaseQueryResult: Результат выполнения запроса
+        """
+        if not self.is_connected or not self.pool:
+            raise Exception("Data database is not connected")
+
+        # Строгая проверка безопасности SQL запроса
+        self._validate_sql_security(query)
+
+        start_time = datetime.now()
+
+        try:
+            # Получаем роль пользователя из базы данных приложения
+            user_role = await self._get_user_role(user_id)
+            
+            if not user_role:
+                raise Exception(f"User {user_id} not found or has no assigned role")
+
+            logger.info(f"Executing query for user {user_id} with role {user_role}")
+
+            # Создаем новое подключение от имени роли пользователя
+            async with self.pool.acquire() as connection:
+                # Логируем детали подключения
+                current_user = await connection.fetchval("SELECT current_user")
+                current_db = await connection.fetchval("SELECT current_database()")
+                logger.info(f"🔍 Before SET ROLE - current_user: {current_user}, database: {current_db}")
+                
+                # Устанавливаем роль для текущей сессии
+                await connection.execute(f"SET ROLE {user_role}")
+                
+                # Устанавливаем search_path для роли на основе схемы пользователя
+                user_schema = await self._get_user_schema(user_id)
+                if user_schema and user_schema != "public":
+                    await connection.execute(f"SET search_path TO {user_schema}, public")
+                    logger.info(f"🔍 Set search_path to {user_schema}, public for {user_role}")
+                else:
+                    # Для ролей без специальной схемы используем только public
+                    await connection.execute("SET search_path TO public")
+                    logger.info(f"🔍 Set search_path to public for {user_role}")
+                
+                # Проверяем роль после установки
+                current_user_after = await connection.fetchval("SELECT current_user")
+                search_path_after = await connection.fetchval("SHOW search_path")
+                logger.info(f"🔍 After SET ROLE - current_user: {current_user_after}, search_path: {search_path_after}")
+                
+                # Логируем запрос
+                logger.info(f"🔍 Executing query: {query}")
+                
+                # Выполняем запрос
+                result = await connection.fetch(query)
+
+                # Преобразуем результат в список словарей
+                data = []
+                columns = []
+
+                if result:
+                    columns = list(result[0].keys())
+                    for row in result:
+                        data.append(dict(row))
+
+                execution_time = (datetime.now() - start_time).total_seconds()
+
+                logger.info(f"Data query executed successfully for user {user_id}: {len(data)} rows in {execution_time:.2f}s")
+
+                return DatabaseQueryResult(
+                    data=data, columns=columns, row_count=len(data), execution_time=execution_time
+                )
+
+        except Exception as e:
+            execution_time = (datetime.now() - start_time).total_seconds()
+            logger.error(f"Data database query failed for user {user_id}: {str(e)}")
+            raise Exception(f"Query execution failed: {str(e)}")
+
+    async def _get_user_role(self, user_id: str) -> str:
+        """
+        Получает роль пользователя из базы данных приложения
+        
+        Args:
+            user_id: ID пользователя
+            
+        Returns:
+            str: Роль пользователя или None если не найдена
+        """
+        try:
+            from services.app_database import app_database_service
+            
+            if not app_database_service.is_connected:
+                raise Exception("Application database is not connected")
+
+            # Получаем роль пользователя из таблицы users_role_bd_mapping
+            # Используем CAST для преобразования user_id в VARCHAR, так как в таблице может быть UUID
+            query = """
+            SELECT role_name 
+            FROM users_role_bd_mapping 
+            WHERE user_id::VARCHAR = $1
+            LIMIT 1
+            """
+            
+            result = await app_database_service.execute_query(query, [user_id])
+            
+            if result.data:
+                role_name = result.data[0]['role_name']
+                logger.info(f"Found role '{role_name}' for user {user_id}")
+                return role_name
+            else:
+                logger.warning(f"No role found for user {user_id}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to get role for user {user_id}: {str(e)}")
+            raise Exception(f"Failed to get user role: {str(e)}")
+
+    async def _get_user_schema(self, user_id: str) -> str:
+        """
+        Получает схему пользователя из базы данных приложения
+        
+        Args:
+            user_id: ID пользователя
+            
+        Returns:
+            str: Схема пользователя или None если не найдена
+        """
+        try:
+            from services.app_database import app_database_service
+            
+            if not app_database_service.is_connected:
+                raise Exception("Application database is not connected")
+
+            # Получаем схему пользователя из таблицы users_role_bd_mapping
+            query = """
+            SELECT schema_name 
+            FROM users_role_bd_mapping 
+            WHERE user_id::VARCHAR = $1
+            LIMIT 1
+            """
+            
+            result = await app_database_service.execute_query(query, [user_id])
+            
+            if result.data:
+                schema_name = result.data[0]['schema_name']
+                logger.info(f"Found schema '{schema_name}' for user {user_id}")
+                return schema_name
+            else:
+                logger.warning(f"No schema found for user {user_id}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to get schema for user {user_id}: {str(e)}")
+            raise Exception(f"Failed to get user schema: {str(e)}")
+
     def _validate_sql_security(self, query: str) -> None:
         """Строгая валидация SQL запроса на безопасность"""
         if not query or not query.strip():
@@ -149,6 +307,12 @@ class DataDatabaseService:
 
             pattern = r"\b" + re.escape(keyword) + r"\b"
             if re.search(pattern, cleaned_query, re.IGNORECASE):
+                logger.info(f"🔍 Found dangerous keyword: '{keyword}' in query: {cleaned_query}")
+                # Исключение: разрешаем TABLE в information_schema.tables для безопасных запросов
+                if keyword == "TABLE" and "information_schema.tables" in cleaned_query:
+                    logger.info(f"✅ Allowing TABLE keyword in information_schema.tables context")
+                    continue
+                logger.error(f"❌ Blocking dangerous keyword: '{keyword}'")
                 raise Exception(f"Dangerous keyword '{keyword}' not allowed in queries")
 
         # Проверяем на подозрительные функции

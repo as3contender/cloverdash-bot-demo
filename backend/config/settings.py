@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-3.5-turbo"
     openai_temperature: float = 0
+    openai_base_url: Optional[str] = None  # Для использования прокси или альтернативных эндпоинтов
+    openai_proxy: Optional[str] = None  # Прокси в формате http://proxy:port
 
     # Application Database Configuration (для пользователей, истории, настроек)
     app_database_url: Optional[str] = None

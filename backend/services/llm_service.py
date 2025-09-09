@@ -4,9 +4,11 @@ import time
 import re
 import logging
 from typing import Optional, Dict, Any
+import httpx
 
 from config.settings import settings
 from services.data_database import data_database_service
+from services.app_database import app_database_service
 from models.llm import LLMQueryResponse
 
 logger = logging.getLogger(__name__)
@@ -18,110 +20,141 @@ class LLMService:
     def __init__(self):
         """Инициализация LLM сервиса"""
         try:
+            # Настройка HTTP клиента с прокси если указан
+            http_client = None
+            if settings.openai_proxy:
+                logger.info(f"Using proxy: {settings.openai_proxy}")
+                http_client = httpx.Client(proxies=settings.openai_proxy)
+            
+            # Настройка базового URL если указан
+            base_url = settings.openai_base_url
+            
             self.llm = ChatOpenAI(
                 model_name=settings.openai_model,
                 temperature=settings.openai_temperature,
                 openai_api_key=settings.openai_api_key,
+                base_url=base_url,
+                http_client=http_client,
             )
             # Проверяем, что API ключ настроен
             self.is_configured = bool(settings.openai_api_key and settings.openai_api_key.strip())
 
             logger.info(f"LLM Service initialized with model: {settings.openai_model}")
             logger.info(f"LLM Service configured: {self.is_configured}")
+            if base_url:
+                logger.info(f"Using custom base URL: {base_url}")
+            if settings.openai_proxy:
+                logger.info(f"Using proxy: {settings.openai_proxy}")
         except Exception as e:
             logger.error(f"Failed to initialize LLM Service: {e}")
             self.is_configured = False
             self.llm = None
 
-    async def generate_sql_query(self, natural_query: str, user_language: str = "en") -> LLMQueryResponse:
+    async def generate_sql_query_with_user_permissions(
+        self, 
+        natural_query: str, 
+        user_id: str, 
+        user_language: str = "ru"
+    ) -> LLMQueryResponse:
         """
-        Генерирует SQL запрос на основе естественного языка
-
+        Генерирует SQL запрос на основе естественного языка с учетом прав пользователя
+        
         Args:
             natural_query: Запрос на естественном языке
+            user_id: ID пользователя для проверки прав
             user_language: Язык пользователя для ответа ('en' или 'ru')
-
+            
         Returns:
             LLMQueryResponse: Ответ с сгенерированным SQL запросом
         """
-        start_time = time.time()
-
+        if not self.is_configured or not self.llm:
+            raise Exception("LLM Admin не настроен или недоступен")
+        
         try:
-            # Проверяем, что LLM сервис настроен
-            if not self.is_configured or not self.llm:
-                raise Exception("LLM сервис не настроен или недоступен")
-
-            # Создаем промпт для генерации SQL
-            prompt = await self._create_sql_prompt(natural_query, user_language)
-
-            # Отправляем запрос к OpenAI
-            response = self.llm.invoke(prompt)
-            logger.debug(f"Response: {response}")
-
+            # Создаем промпт с учетом прав пользователя
+            prompt = await self._create_sql_prompt_with_user_permissions(
+                natural_query, user_id, user_language
+            )
+            
+            # Отправляем запрос к LLM
+            response = await self.llm.ainvoke(prompt)
+            
             # Извлекаем SQL из ответа
             sql_query = self._extract_sql_from_response(response.content)
-            logger.debug(f"SQL query: {sql_query}")
-
+            
             # Валидируем SQL на предмет безопасности
             if not self._validate_sql_security(sql_query):
                 raise Exception("SQL запрос не прошел проверку безопасности")
-
-            execution_time = time.time() - start_time
-
+            
             result = LLMQueryResponse(
-                sql_query=sql_query, explanation=self._clean_markdown(response.content), execution_time=execution_time
+                sql_query=sql_query,
+                explanation=self._clean_markdown(response.content),
+                execution_time=0.0  # Будет заполнено позже
             )
-
-            logger.info(f"SQL query generated successfully in {execution_time:.2f}s")
-
+            
+            logger.info(f"SQL query generated successfully for user {user_id}")
+            logger.info(f"Generated SQL query: {sql_query}")
+            
+            # Дополнительная диагностика безопасности
+            try:
+                from services.data_database import data_database_service
+                data_database_service._validate_sql_security(sql_query)
+                logger.info("✅ Generated SQL passed security validation")
+            except Exception as security_error:
+                logger.error(f"❌ Generated SQL failed security validation: {str(security_error)}")
+                logger.info(f"🔍 SQL that failed: {sql_query}")
+            
             return result
-
+            
         except Exception as e:
-            execution_time = time.time() - start_time
-            logger.error(f"LLM query generation failed after {execution_time:.2f}s: {str(e)}")
+            logger.error(f"LLM query generation failed for user {user_id}: {str(e)}")
             raise Exception(f"Ошибка генерации SQL запроса: {str(e)}")
 
-    async def _create_sql_prompt(self, natural_query: str, user_language: str = "en") -> str:
-        """Создает промпт для генерации SQL запроса"""
-
-        # Получаем актуальную схему базы данных
-        try:
-            db_schema = await self._get_database_schema()
-            schema_description = self._format_schema_for_prompt(db_schema)
-        except Exception as e:
-            logger.warning(f"Failed to get database schema: {e}")
-            schema_description = "Схема базы данных недоступна. Используйте стандартные имена таблиц."
-
+    async def _create_sql_prompt_with_user_permissions(
+        self, 
+        natural_query: str, 
+        user_id: str, 
+        user_language: str = "en"
+    ) -> str:
+        """Создает LLM промпт с учетом прав пользователя"""
+        
+        # Получаем схему БД с правами пользователя
+        schema = await self._get_database_schema_with_user_permissions(user_id)
+        schema_description = self._format_schema_for_prompt(schema)
+        logger.info(f"User ID: {user_id}, Schema description: {schema_description}")
         prompt = f"""
 Ты - эксперт по SQL запросам. На основе описания схемы базы данных и пользовательского запроса на естественном языке, сгенерируй корректный SQL запрос.
 
-СХЕМА БАЗЫ ДАННЫХ:
 {schema_description}
 
 ЗАПРОС ПОЛЬЗОВАТЕЛЯ: {natural_query}
 
-ИНСТРУКЦИИ:
-1. Сгенерируй только SQL запрос SELECT (никаких UPDATE, DELETE, INSERT, DROP)
-2. Используй имена колонок из описания схемы базы данных.
-3. Используй только таблицы и колонки из предоставленной схемы
-4. Запрос должен быть валидным PostgreSQL
-5. Если запрос невозможно выполнить с данной схемой, объясни почему
-6. Не используй подзапросы без необходимости
-7. Используй корректные типы данных
-8. Добавляй разумные ограничения (LIMIT) для больших результатов
+ВАЖНЫЕ ПРАВИЛА:
+- Генерируй только SELECT запросы
+- Используй только таблицы, доступные пользователю {user_id}
+- НЕ указывай префикс схемы в FROM (используй просто имя таблицы, например: FROM users)
+- ИСКЛЮЧЕНИЕ: Для системных функций (CURRENT_DATE, CURRENT_TIME, NOW(), etc.) НЕ используй FROM
+- Отвечай на языке: {user_language}
+- Объясни логику запроса
 
-ОТВЕТ ДОЛЖЕН СОДЕРЖАТЬ:
-- SQL запрос в блоке ```sql
-- Краткое объяснение запроса
+СПЕЦИАЛЬНЫЕ ИНСТРУКЦИИ ДЛЯ ТАБЛИЦЫ users:
+- Для подсчета пользователей используй: SELECT COUNT(*) FROM users
+- Для получения списка пользователей используй: SELECT * FROM users
+- Для фильтрации по имени используй колонку: full_name
+- Для фильтрации по Telegram ID используй колонку: telegram_id
+- Для фильтрации по статусу используй колонку: is_active
 
-ПРИМЕР ОТВЕТА:
+ПРИМЕР ПРАВИЛЬНОГО SQL ЗАПРОСА:
 ```sql
-SELECT name, email FROM users WHERE created_at > '2023-01-01' LIMIT 100;
+SELECT COUNT(*) AS total_users 
+FROM users 
+WHERE is_active = true
 ```
-Этот запрос выбирает имена и email всех пользователей, созданных после 1 января 2023 года, с ограничением до 100 записей.
 
-{self._get_language_instruction(user_language)}
+SQL запрос:
+```sql
 """
+        
         return prompt
 
     def _get_language_instruction(self, user_language: str) -> str:
@@ -131,26 +164,93 @@ SELECT name, email FROM users WHERE created_at > '2023-01-01' LIMIT 100;
         else:
             return "Provide response in English."
 
-    async def _get_database_schema(self) -> Dict[str, Any]:
-        """Получение схемы базы данных пользовательских данных"""
+    async def _get_user_database_from_mapping(self, user_id: str) -> str:
+        """Получает базу данных пользователя из маппинга"""
         try:
-            # Импортируем здесь, чтобы избежать циклических импортов
-            from services.app_database import app_database_service
-            from services.data_database import data_database_service
-
-            if app_database_service.is_connected and data_database_service.is_connected:
-                # Получаем имя базы данных
-                database_name = data_database_service.get_database_name()
-                # Получаем схему со всеми представлениями и схемами из app_database
-                return await app_database_service.get_database_schema(
-                    database_name=database_name, include_views=True, schema_name=None
-                )
+            query = """
+            SELECT database_name 
+            FROM users_role_bd_mapping 
+            WHERE user_id::VARCHAR = $1
+            LIMIT 1
+            """
+            
+            result = await app_database_service.execute_query(query, [user_id])
+            
+            if result.data:
+                database_name = result.data[0]['database_name']
+                logger.info(f"User {user_id} mapped to database: {database_name}")
+                return database_name
             else:
-                logger.warning("Databases not connected - no schema available")
-                return {}
+                logger.warning(f"User {user_id} not found in mapping")
+                return None
+                
         except Exception as e:
-            logger.warning(f"Failed to get database schema: {e}")
-            return {}
+            logger.error(f"Error getting user database from mapping: {str(e)}")
+            return None
+
+    async def _get_user_schema_from_mapping(self, user_id: str) -> str:
+        """Получает схему пользователя из маппинга"""
+        try:
+            query = """
+            SELECT schema_name 
+            FROM users_role_bd_mapping 
+            WHERE user_id::VARCHAR = $1
+            LIMIT 1
+            """
+            
+            result = await app_database_service.execute_query(query, [user_id])
+            
+            if result.data:
+                schema_name = result.data[0]['schema_name']
+                logger.info(f"User {user_id} mapped to schema: {schema_name}")
+                return schema_name
+            else:
+                logger.warning(f"User {user_id} not found in mapping")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting user schema from mapping: {str(e)}")
+            return None
+
+    async def _get_database_schema_with_user_permissions(self, user_id: str) -> Dict[str, Any]:
+        """Получает схему БД с учетом прав пользователя"""
+        
+        try:
+            # Получаем базу данных пользователя из маппинга
+            database_name = await self._get_user_database_from_mapping(user_id)
+            
+            if not database_name:
+                logger.warning(f"User {user_id} not found in mapping, using default database")
+                database_name = data_database_service.get_database_name()
+            
+            # Получаем схему с правами пользователя
+            # Сначала получаем схему пользователя из маппинга
+            schema_name = await self._get_user_schema_from_mapping(user_id)
+            if not schema_name:
+                schema_name = "public"  # Fallback к public
+                
+            schema = await app_database_service.get_database_schema_with_user_permissions(
+                user_id=user_id,
+                database_name=database_name,
+                include_views=True,
+                schema_name=schema_name
+            )
+            
+            logger.info(f"Database schema retrieved for user {user_id}: {len(schema)} tables")
+            return schema
+            
+        except Exception as e:
+            logger.error(f"Failed to get database schema for user {user_id}: {e}")
+            # Возвращаем базовую схему в случае ошибки
+            return {
+                "users": {
+                    "description": "Таблица пользователей (базовая)",
+                    "columns": [
+                        {"name": "id", "description": "ID пользователя", "datatype": "uuid"},
+                        {"name": "username", "description": "Имя пользователя", "datatype": "varchar"}
+                    ]
+                }
+            }
 
     def _format_schema_for_prompt(self, db_schema: Dict[str, Any]) -> str:
         """Форматирует схему базы данных для промпта"""
@@ -171,7 +271,26 @@ SELECT name, email FROM users WHERE created_at > '2023-01-01' LIMIT 100;
             if "description" in table_info:
                 schema_text += f"ОПИСАНИЕ: {table_info['description']}\n"
 
-            schema_text += "КОЛОНКИ:\n"
+            # Специальное форматирование для bills таблицы
+            if table_name == "bills":
+                schema_text += "ВАЖНО: Это основная таблица для анализа продаж!\n"
+                schema_text += "КЛЮЧЕВЫЕ КОЛОНКИ ДЛЯ АНАЛИЗА:\n"
+                schema_text += "  - bill_key: ключ чека\n"
+                schema_text += "  - bill_date: дата чека\n"
+                schema_text += "  - bill_time: время чека\n"
+                schema_text += "  - bill_code: код чека\n"
+                schema_text += "  - customer_id: идентификатор покупателя\n"
+                schema_text += "  - goods_type: тип товара\n"
+                schema_text += "  - goods_group: группа товара\n"
+                schema_text += "  - goods_name: название товара\n"
+                schema_text += "  - goods_full_name: полное название товара\n"
+                schema_text += "  - row_quantity: количество товара\n"
+                schema_text += "  - row_amount: цена товара\n"
+                schema_text += "  - row_sum: сумма товара\n"
+                schema_text += "  - row_sale: скидка на товар\n"
+                schema_text += "  - customer_name: имя клиента\n"
+
+            schema_text += "ВСЕ КОЛОНКИ:\n"
             for column in table_info.get("columns", []):
                 col_name = column.get("name", "")
                 # Используем datatype из описаний, если доступен, иначе базовый type
@@ -189,19 +308,43 @@ SELECT name, email FROM users WHERE created_at > '2023-01-01' LIMIT 100;
 
     def _extract_sql_from_response(self, response: str) -> str:
         """Извлекает SQL запрос из ответа LLM"""
+        logger.info(f"🔍 LLM Response: {response}")  # Логируем полный ответ
+        
         # Ищем SQL блок в markdown
         sql_pattern = r"```sql\s*(.*?)\s*```"
         match = re.search(sql_pattern, response, re.DOTALL | re.IGNORECASE)
 
         if match:
-            return match.group(1).strip()
+            sql_query = match.group(1).strip()
+            logger.info(f"📋 Extracted SQL from markdown: {sql_query}")
+            return sql_query
 
-        # Если не найден markdown блок, ищем строки, начинающиеся с SELECT
+        # Если не найден markdown блок, ищем многострочный SQL запрос
         lines = response.split("\n")
+        sql_lines = []
+        in_sql = False
+        
         for line in lines:
             line = line.strip()
             if line.upper().startswith("SELECT"):
-                return line
+                in_sql = True
+                sql_lines.append(line)
+            elif in_sql and (line.upper().startswith(("FROM", "WHERE", "GROUP BY", "HAVING", "ORDER BY", "LIMIT")) or 
+                           line.startswith(("FROM", "WHERE", "GROUP BY", "HAVING", "ORDER BY", "LIMIT")) or
+                           line.endswith(";")):
+                sql_lines.append(line)
+                if line.endswith(";"):
+                    break
+            elif in_sql and line == "":
+                sql_lines.append(line)
+            elif in_sql and not line.upper().startswith(("SELECT", "FROM", "WHERE", "GROUP BY", "HAVING", "ORDER BY", "LIMIT")):
+                # Если встретили не-SQL строку, заканчиваем
+                break
+
+        if sql_lines:
+            extracted_sql = "\n".join(sql_lines).strip()
+            logger.info(f"📋 Extracted SQL from plain text: {extracted_sql}")
+            return extracted_sql
 
         raise Exception("SQL запрос не найден в ответе LLM")
 
@@ -229,7 +372,7 @@ SELECT name, email FROM users WHERE created_at > '2023-01-01' LIMIT 100;
             "PROCEDURE",
             "FUNCTION",
             "TRIGGER",
-            "INFORMATION_SCHEMA",
+            # "INFORMATION_SCHEMA",  # Разрешаем запросы к information_schema для безопасных операций
         ]
 
         # Специальные символы (как подстроки)

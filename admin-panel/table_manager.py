@@ -12,12 +12,26 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # Импортируем функцию escape_json_for_postgres из app.py
-from admin_panel.app import escape_json_for_postgres
+try:
+    from admin_panel.app import escape_json_for_postgres
+except ImportError:
+    # Fallback для случаев, когда импорт не работает
+    def escape_json_for_postgres(json_str):
+        return json_str
 
 def get_sqlalchemy_engine():
     """Получить SQLAlchemy engine для подключения к базе данных"""
-    from app.config.config import get_db_url
-    return create_engine(get_db_url())
+    try:
+        from app.config.config import get_db_url
+        return create_engine(get_db_url())
+    except ImportError:
+        # Fallback для случаев, когда импорт не работает
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        
+        db_url = os.getenv('DATABASE_URL', 'postgresql://user:password@localhost/dbname')
+        return create_engine(db_url)
 
 def search_records(search_term: str, search_field: str = 'all') -> pd.DataFrame:
     """
@@ -298,6 +312,75 @@ def validate_record_data(data: Dict[str, Any]) -> Dict[str, List[str]]:
     valid_object_types = ['table', 'view', 'function', 'procedure']
     if data.get('object_type') and data['object_type'] not in valid_object_types:
         errors.append(f'Object Type должен быть одним из: {", ".join(valid_object_types)}')
+    
+    return {'errors': errors}
+
+def validate_user_table_access(data: Dict[str, Any], username: str = None) -> Dict[str, List[str]]:
+    """
+    Валидация доступа пользователя к таблице
+    
+    Args:
+        data: Словарь с данными записи (database_name, schema_name, table_name)
+        username: имя пользователя для проверки доступа
+    
+    Returns:
+        Словарь с ошибками валидации доступа
+    """
+    errors = []
+    
+    if not username:
+        return {'errors': errors}
+    
+    try:
+        # Импортируем функции из app.py
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        from app import validate_user_table_access as check_access
+        
+        database_name = data.get('database_name', '').strip()
+        schema_name = data.get('schema_name', '').strip()
+        table_name = data.get('table_name', '').strip()
+        
+        if database_name and schema_name and table_name:
+            if not check_access(username, database_name, schema_name, table_name):
+                errors.append(f'У пользователя {username} нет доступа к таблице {database_name}.{schema_name}.{table_name}')
+        
+    except Exception as e:
+        errors.append(f'Ошибка при проверке доступа: {str(e)}')
+    
+    return {'errors': errors}
+
+def validate_user_schema_access(schema_name: str, username: str = None) -> Dict[str, List[str]]:
+    """
+    Валидация доступа пользователя к схеме
+    
+    Args:
+        schema_name: название схемы
+        username: имя пользователя для проверки доступа
+    
+    Returns:
+        Словарь с ошибками валидации доступа
+    """
+    errors = []
+    
+    if not username or not schema_name:
+        return {'errors': errors}
+    
+    try:
+        # Импортируем функции из app.py
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        from app import get_user_accessible_schemas
+        
+        accessible_schemas = get_user_accessible_schemas(username)
+        
+        if schema_name not in accessible_schemas:
+            errors.append(f'У пользователя {username} нет доступа к схеме {schema_name}. Доступные схемы: {", ".join(accessible_schemas) if accessible_schemas else "нет"}')
+        
+    except Exception as e:
+        errors.append(f'Ошибка при проверке доступа к схеме: {str(e)}')
     
     return {'errors': errors}
 

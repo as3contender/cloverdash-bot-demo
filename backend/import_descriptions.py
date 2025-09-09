@@ -30,7 +30,7 @@ async def import_column_descriptions():
         await data_database_service.initialize()
 
         # Создаем таблицы приложения, если их нет
-        await app_database_service.create_app_tables()
+       # await app_database_service.create_app_tables()
 
         # Получаем данные из column_descriptions.json
         if not DB_SCHEMA_CONTEXT:

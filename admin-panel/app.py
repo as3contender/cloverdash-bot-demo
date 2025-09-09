@@ -19,7 +19,7 @@ from dict_crud import DictCRUD
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
-TABLE_NAME = 'public.database_descriptions_backup'
+TABLE_NAME = 'public.database_descriptions'
 sqlalchemy_engine = None
 
 # Настройка логирования
@@ -154,7 +154,7 @@ def save_column_description(database_name, schema_name, table_name, column_name,
         
         # Получаем ID записи по database_name, schema_name, table_name
         query = """
-            SELECT id FROM database_descriptions_backup 
+            SELECT id FROM database_descriptions 
             WHERE database_name = :db_name AND schema_name = :schema_name AND table_name = :table_name
         """
         with engine.connect() as conn:
@@ -191,7 +191,7 @@ def delete_column_description(database_name, schema_name, table_name, column_nam
         
         # Получаем ID записи по database_name, schema_name, table_name
         query = """
-            SELECT id FROM database_descriptions_backup 
+            SELECT id FROM database_descriptions
             WHERE database_name = :db_name AND schema_name = :schema_name AND table_name = :table_name
         """
         with engine.connect() as conn:
@@ -227,7 +227,7 @@ def delete_record(database_name, schema_name, table_name):
         with engine.connect() as conn:
             # Удаляем запись из БД
             delete_query = """
-                DELETE FROM database_descriptions_backup 
+                DELETE FROM database_descriptions 
                 WHERE database_name = :db_name AND schema_name = :schema_name AND table_name = :table_name
             """
             
@@ -252,10 +252,10 @@ def delete_record(database_name, schema_name, table_name):
         return False
 
 def get_database_descriptions():
-    """Получение всех записей из таблицы database_descriptions_backup"""
+    """Получение всех записей из таблицы database_descriptions"""
     try:
         engine = get_sqlalchemy_engine()
-        query = "SELECT * FROM database_descriptions_backup ORDER BY database_name, schema_name, table_name"
+        query = "SELECT * FROM database_descriptions ORDER BY database_name, schema_name, table_name"
         df = pd.read_sql_query(query, engine)
         return df
     except Exception as e:
@@ -266,7 +266,7 @@ def get_record_by_id(record_id):
     """Получить запись по ID"""
     try:
         engine = get_sqlalchemy_engine()
-        query = "SELECT * FROM database_descriptions_backup WHERE id = :record_id"
+        query = "SELECT * FROM database_descriptions WHERE id = :record_id"
         with engine.connect() as conn:
             result = conn.execute(text(query), {"record_id": record_id})
             row = result.fetchone()
@@ -282,7 +282,7 @@ def get_available_ids():
     """Получить список доступных ID записей"""
     try:
         engine = get_sqlalchemy_engine()
-        query = 'SELECT id, database_name, schema_name, table_name FROM database_descriptions_backup ORDER BY id'
+        query = 'SELECT id, database_name, schema_name, table_name FROM database_descriptions ORDER BY id'
         df = pd.read_sql(query, engine)
         return df
     except Exception as e:
@@ -348,7 +348,7 @@ def add_new_record(database_name, schema_name, table_name, object_type, descript
             
             # Проверяем, не существует ли уже такая запись
             check_query = """
-                SELECT COUNT(*) FROM database_descriptions_backup 
+                SELECT COUNT(*) FROM database_descriptions 
                 WHERE database_name = :db_name AND schema_name = :schema_name AND table_name = :table_name
             """
             logging.info(f'Выполняем проверку существования записи: {check_query}')
@@ -367,7 +367,7 @@ def add_new_record(database_name, schema_name, table_name, object_type, descript
             
             # Добавляем новую запись (без поля description)
             insert_query = """
-                INSERT INTO database_descriptions_backup 
+                INSERT INTO database_descriptions 
                 (database_name, schema_name, table_name, object_type, table_description, created_at, updated_at)
                 VALUES (:db_name, :schema_name, :table_name, :obj_type, :table_desc, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """
@@ -866,22 +866,18 @@ def login_page():
 def authenticate_user(username, password):
     """Аутентификация пользователя из БД или переменных окружения"""
     # Инициализируем системных пользователей в начале функции
-    valid_users = {
-        "admin": os.getenv('ADMIN_PASSWORD', 'admin123'),
-        "user": os.getenv('USER_PASSWORD', 'user123'),
-        "test": os.getenv('TEST_PASSWORD', 'test123')
-    }
+   
     
     try:
         # Сначала проверяем пользователей из БД
         engine = get_sqlalchemy_engine()
         
-        # Проверяем существование таблицы user_backup
+        # Проверяем существование таблицы users
         check_table_query = text("""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
                 WHERE table_schema = 'public' 
-                AND table_name = 'user_backup'
+                AND table_name = 'users'
             );
         """)
         
@@ -892,7 +888,7 @@ def authenticate_user(username, password):
             if table_exists:
                 # Ищем пользователя в БД
                 user_query = text("""
-                    SELECT hashed_password FROM user_backup 
+                    SELECT hashed_password FROM users 
                     WHERE username = :username AND is_active = true
                 """)
                 
@@ -910,9 +906,7 @@ def authenticate_user(username, password):
                     else:
                         logging.warning(f'Неверный пароль для пользователя {username} из БД')
                         return False
-        
-        # Если пользователь не найден в БД, проверяем системных пользователей
-        
+                      
         is_valid = username in valid_users and valid_users[username] == password
         
         if is_valid:
@@ -926,6 +920,11 @@ def authenticate_user(username, password):
         logging.error(f'Ошибка при аутентификации пользователя {username}: {e}', exc_info=True)
         
         # Fallback к системным пользователям при ошибке БД
+        valid_users = {
+            "admin": os.getenv('ADMIN_PASSWORD', ''),
+            
+        }
+        
         is_valid = username in valid_users and valid_users[username] == password
         
         if is_valid:
@@ -941,12 +940,12 @@ def get_user_role(username):
         # Сначала проверяем пользователей из БД
         engine = get_sqlalchemy_engine()
         
-        # Проверяем существование таблицы user_backup
+        # Проверяем существование таблицы users
         check_table_query = text("""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
                 WHERE table_schema = 'public' 
-                AND table_name = 'user_backup'
+                AND table_name = 'users'
             );
         """)
         
@@ -957,7 +956,7 @@ def get_user_role(username):
             if table_exists:
                 # Ищем пользователя в БД
                 user_query = text("""
-                    SELECT full_name FROM user_backup 
+                    SELECT full_name FROM users 
                     WHERE username = :username AND is_active = true
                 """)
                 
@@ -1002,7 +1001,7 @@ def change_password(username, old_password, new_password):
 
 def add_user_to_backup(username, password, role, full_name="", email="", telegram_id="", telegram_username=""):
     """
-    Добавляет нового пользователя в таблицу user_backup
+    Добавляет нового пользователя в таблицу users
     
     Args:
         username: имя пользователя
@@ -1022,12 +1021,12 @@ def add_user_to_backup(username, password, role, full_name="", email="", telegra
         
         engine = get_sqlalchemy_engine()
         
-        # Проверяем существование таблицы user_backup
+        # Проверяем существование таблицы  users
         check_table_query = text("""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
                 WHERE table_schema = 'public' 
-                AND table_name = 'user_backup'
+                AND table_name = 'users'
             );
         """)
         
@@ -1036,7 +1035,7 @@ def add_user_to_backup(username, password, role, full_name="", email="", telegra
             table_exists = result.scalar()
             
             if not table_exists:
-                logging.error('Таблица user_backup не существует')
+                logging.error('Таблица users не существует')
                 return False
         
         # Хешируем пароль
@@ -1047,7 +1046,7 @@ def add_user_to_backup(username, password, role, full_name="", email="", telegra
         
         # SQL запрос для вставки
         insert_query = text("""
-            INSERT INTO user_backup (
+            INSERT INTO users (
                 username, email, full_name, hashed_password, 
                 telegram_id, telegram_username, is_active, 
                 created_at, updated_at
@@ -1075,16 +1074,16 @@ def add_user_to_backup(username, password, role, full_name="", email="", telegra
             result = conn.execute(insert_query, params)
             conn.commit()
         
-        logging.info(f'Пользователь {username} успешно добавлен в таблицу user_backup')
+        logging.info(f'Пользователь {username} успешно добавлен в таблицу users')
         return True
         
     except Exception as e:
         logging.error(f'Ошибка при добавлении пользователя {username}: {e}', exc_info=True)
         return False
 
-def get_users_from_backup():
+def get_users_from_users():
     """
-    Получает список пользователей из таблицы user_backup
+    Получает список пользователей из таблицы users
     
     Returns:
         pd.DataFrame: DataFrame с пользователями или пустой DataFrame в случае ошибки
@@ -1092,12 +1091,12 @@ def get_users_from_backup():
     try:
         engine = get_sqlalchemy_engine()
         
-        # Проверяем существование таблицы user_backup
+        # Проверяем существование таблицы users
         check_table_query = text("""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
                 WHERE table_schema = 'public' 
-                AND table_name = 'user_backup'
+                AND table_name = 'users'
             );
         """)
         
@@ -1106,10 +1105,10 @@ def get_users_from_backup():
             table_exists = result.scalar()
             
             if not table_exists:
-                logging.warning('Таблица user_backup не существует')
+                logging.warning('Таблица users не существует')
                 return pd.DataFrame()
         
-        query = text("SELECT username, email, full_name, is_active, created_at, updated_at FROM user_backup ORDER BY created_at DESC")
+        query = text("SELECT username, email, full_name, is_active, created_at, updated_at FROM users ORDER BY created_at DESC")
         
         with engine.connect() as conn:
             df = pd.read_sql(query, conn)
@@ -1122,7 +1121,7 @@ def get_users_from_backup():
 
 def delete_user_from_backup(username):
     """
-    Удаляет пользователя из таблицы user_backup
+    Удаляет пользователя из таблицы users
     
     Args:
         username: имя пользователя для удаления
@@ -1138,12 +1137,12 @@ def delete_user_from_backup(username):
         
         engine = get_sqlalchemy_engine()
         
-        # Проверяем существование таблицы user_backup
+        # Проверяем существование таблицы users
         check_table_query = text("""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
                 WHERE table_schema = 'public' 
-                AND table_name = 'user_backup'
+                AND table_name = 'users'
             );
         """)
         
@@ -1152,23 +1151,503 @@ def delete_user_from_backup(username):
             table_exists = result.scalar()
             
             if not table_exists:
-                logging.error('Таблица user_backup не существует')
+                logging.error('Таблица users не существует')
                 return False
             
             # Удаляем пользователя
-            delete_query = text("DELETE FROM user_backup WHERE username = :username")
+            delete_query = text("DELETE FROM users WHERE username = :username")
             result = conn.execute(delete_query, {'username': username})
             conn.commit()
             
             if result.rowcount > 0:
-                logging.info(f'Пользователь {username} успешно удален из таблицы user_backup')
+                logging.info(f'Пользователь {username} успешно удален из таблицы users')
                 return True
             else:
-                logging.warning(f'Пользователь {username} не найден в таблице user_backup')
+                logging.warning(f'Пользователь {username} не найден в таблице users')
                 return False
         
     except Exception as e:
         logging.error(f'Ошибка при удалении пользователя {username}: {e}', exc_info=True)
+        return False
+
+# ===== ФУНКЦИИ ДЛЯ УПРАВЛЕНИЯ ПРАВАМИ ДОСТУПА =====
+
+def get_user_permissions():
+    """Получение всех прав доступа из таблицы user_permissions"""
+    try:
+        engine = get_sqlalchemy_engine()
+        query = """
+            SELECT up.*
+            FROM user_permissions up
+            ORDER BY up.role_name, up.database_name, up.table_name
+        """
+        df = pd.read_sql_query(query, engine)
+        return df
+    except Exception as e:
+        logging.error(f'Ошибка при получении прав доступа: {e}', exc_info=True)
+        return pd.DataFrame()
+
+def get_user_role_mappings():
+    """Получение всех привязок пользователей к ролям"""
+    try:
+        engine = get_sqlalchemy_engine()
+        query = """
+            SELECT urm.*, u.username, u.full_name 
+            FROM users_role_bd_mapping urm
+            LEFT JOIN users u ON urm.user_id = u.id
+            ORDER BY urm.user_id, urm.role_name
+        """
+        df = pd.read_sql_query(query, engine)
+        # Конвертируем UUID в строки для корректного отображения в Streamlit
+        if not df.empty and 'user_id' in df.columns:
+            df['user_id'] = df['user_id'].astype(str)
+        return df
+    except Exception as e:
+        logging.error(f'Ошибка при получении привязок ролей: {e}', exc_info=True)
+        return pd.DataFrame()
+
+def get_available_tables():
+    """Получение списка всех доступных таблиц"""
+    try:
+        engine = get_sqlalchemy_engine()
+        query = """
+            SELECT DISTINCT database_name, schema_name, table_name, object_type
+            FROM database_descriptions
+            ORDER BY database_name, schema_name, table_name
+        """
+        df = pd.read_sql_query(query, engine)
+        return df
+    except Exception as e:
+        logging.error(f'Ошибка при получении списка таблиц: {e}', exc_info=True)
+        return pd.DataFrame()
+
+def get_user_accessible_tables(username):
+    """
+    Получение списка таблиц, доступных конкретному пользователю
+    
+    Args:
+        username: имя пользователя
+        
+    Returns:
+        DataFrame с доступными таблицами для пользователя
+    """
+    try:
+        engine = get_sqlalchemy_engine()
+        
+        # Получаем роли пользователя и их права доступа к таблицам
+        query = """
+            SELECT DISTINCT 
+                dd.database_name,
+                dd.schema_name, 
+                dd.table_name,
+                dd.object_type,
+                up.permission_type,
+                urm.role_name
+            FROM users u
+            JOIN users_role_bd_mapping urm ON u.id = urm.user_id
+            JOIN user_permissions up ON urm.role_name = up.role_name 
+                AND urm.database_name = up.database_name
+            JOIN database_descriptions dd ON up.database_name = dd.database_name 
+                AND up.schema_name = dd.schema_name 
+                AND up.table_name = dd.table_name
+            WHERE u.username = :username 
+                AND u.is_active = true
+            ORDER BY dd.database_name, dd.schema_name, dd.table_name
+        """
+        
+        df = pd.read_sql_query(query, engine, params={'username': username})
+        return df
+        
+    except Exception as e:
+        logging.error(f'Ошибка при получении доступных таблиц для пользователя {username}: {e}', exc_info=True)
+        return pd.DataFrame()
+
+def validate_user_table_access(username, database_name, schema_name, table_name):
+    """
+    Проверка, имеет ли пользователь доступ к указанной таблице
+    
+    Args:
+        username: имя пользователя
+        database_name: название базы данных
+        schema_name: название схемы
+        table_name: название таблицы
+        
+    Returns:
+        bool: True если пользователь имеет доступ, False в противном случае
+    """
+    try:
+        accessible_tables = get_user_accessible_tables(username)
+        
+        if accessible_tables.empty:
+            return False
+            
+        # Проверяем, есть ли указанная таблица в списке доступных
+        access_check = accessible_tables[
+            (accessible_tables['database_name'] == database_name) &
+            (accessible_tables['schema_name'] == schema_name) &
+            (accessible_tables['table_name'] == table_name)
+        ]
+        
+        return not access_check.empty
+        
+    except Exception as e:
+        logging.error(f'Ошибка при проверке доступа пользователя {username} к таблице {database_name}.{schema_name}.{table_name}: {e}', exc_info=True)
+        return False
+
+def get_user_accessible_schemas(username):
+    """
+    Получение списка схем, доступных конкретному пользователю
+    
+    Args:
+        username: имя пользователя
+        
+    Returns:
+        list: список доступных схем для пользователя
+    """
+    try:
+        accessible_tables = get_user_accessible_tables(username)
+        
+        if accessible_tables.empty:
+            return []
+            
+        # Получаем уникальные схемы
+        schemas = accessible_tables['schema_name'].unique().tolist()
+        return sorted(schemas)
+        
+    except Exception as e:
+        logging.error(f'Ошибка при получении доступных схем для пользователя {username}: {e}', exc_info=True)
+        return []
+
+def get_available_users():
+    """Получение списка всех пользователей"""
+    try:
+        engine = get_sqlalchemy_engine()
+        query = """
+            SELECT id, username, full_name, telegram_id, is_active
+            FROM users
+            WHERE is_active = true
+            ORDER BY username
+        """
+        df = pd.read_sql_query(query, engine)
+        # Конвертируем UUID в строки для корректного отображения в Streamlit
+        if not df.empty and 'id' in df.columns:
+            df['id'] = df['id'].astype(str)
+        return df
+    except Exception as e:
+        logging.error(f'Ошибка при получении списка пользователей: {e}', exc_info=True)
+        return pd.DataFrame()
+
+def add_user_role_mapping(user_id, role_name, database_name, schema_name="public"):
+    """Добавление привязки пользователя к роли"""
+    try:
+        engine = get_sqlalchemy_engine()
+        
+        # Сначала проверяем, существует ли уже такая привязка
+        check_query = """
+            SELECT COUNT(*) FROM users_role_bd_mapping 
+            WHERE user_id = :user_id AND role_name = :role_name AND database_name = :database_name
+        """
+        
+        with engine.connect() as conn:
+            result = conn.execute(text(check_query), {
+                'user_id': user_id,
+                'role_name': role_name,
+                'database_name': database_name
+            })
+            count = result.fetchone()[0]
+            
+            if count > 0:
+                logging.info(f'Привязка пользователя {user_id} к роли {role_name} уже существует')
+                return True
+            
+            # Добавляем привязку, если её нет
+            insert_query = """
+                INSERT INTO users_role_bd_mapping (user_id, role_name, database_name, schema_name)
+                VALUES (:user_id, :role_name, :database_name, :schema_name)
+            """
+            
+            result = conn.execute(text(insert_query), {
+                'user_id': user_id,
+                'role_name': role_name,
+                'database_name': database_name,
+                'schema_name': schema_name
+            })
+            conn.commit()
+            
+            logging.info(f'Привязка пользователя {user_id} к роли {role_name} добавлена')
+            return True
+            
+    except Exception as e:
+        logging.error(f'Ошибка при добавлении привязки роли: {e}', exc_info=True)
+        return False
+
+def create_postgresql_role(role_name, database_name, schema_name="public"):
+    """Создание роли в PostgreSQL с настройкой search_path"""
+    try:
+        # Получаем конфигурацию для подключения к базе данных пользовательских данных
+        config = get_dynamic_db_config()
+        
+        # Подключаемся к базе данных пользовательских данных (не к app_database)
+        if database_name == 'cloverdash_bot':
+            # Используем настройки для cloverdash_bot
+            data_config = {
+                'host': os.getenv('DATA_DATABASE_HOST') or config['host'],
+                'port': int(os.getenv('DATA_DATABASE_PORT', '5432')),
+                'user': os.getenv('DATA_DATABASE_USER') or config['user'],
+                'password': os.getenv('DATA_DATABASE_PASSWORD') or config['password'],
+                'database': database_name
+            }
+        else:
+            # Для других баз данных используем стандартные настройки
+            data_config = {
+                'host': config['host'],
+                'port': config['port'],
+                'user': config['user'],
+                'password': config['password'],
+                'database': database_name
+            }
+        
+        # Создаем подключение к базе данных пользовательских данных
+        data_url = (
+            f"postgresql+psycopg2://{data_config['user']}:{data_config['password']}@"
+            f"{data_config['host']}:{data_config['port']}/{data_config['database']}?sslmode=require"
+        )
+        data_engine = create_engine(data_url)
+        
+        with data_engine.connect() as conn:
+            # Проверяем, существует ли роль
+            check_role_query = "SELECT rolname FROM pg_roles WHERE rolname = :role_name"
+            result = conn.execute(text(check_role_query), {'role_name': role_name})
+            existing_role = result.fetchone()
+            
+            if not existing_role:
+                # Создаем роль
+                create_role_query = f"CREATE ROLE {role_name}"
+                conn.execute(text(create_role_query))
+                conn.commit()
+                logging.info(f'Роль {role_name} создана в базе данных {database_name}')
+            else:
+                logging.info(f'Роль {role_name} уже существует в базе данных {database_name}')
+            
+            # Настраиваем search_path для роли
+            if schema_name and schema_name != "public":
+                search_path_query = f"ALTER ROLE {role_name} SET search_path TO {schema_name}, public"
+                conn.execute(text(search_path_query))
+                conn.commit()
+                logging.info(f'Search_path установлен для роли {role_name}: {schema_name}, public')
+            else:
+                search_path_query = f"ALTER ROLE {role_name} SET search_path TO public"
+                conn.execute(text(search_path_query))
+                conn.commit()
+                logging.info(f'Search_path установлен для роли {role_name}: public')
+            
+            return True
+            
+    except Exception as e:
+        logging.error(f'Ошибка при создании роли {role_name} в базе данных {database_name}: {e}', exc_info=True)
+        return False
+
+def grant_postgresql_permission(role_name, database_name, schema_name, table_name, permission_type):
+    """Предоставление прав роли в PostgreSQL"""
+    try:
+        # Получаем конфигурацию для подключения к базе данных пользовательских данных
+        config = get_dynamic_db_config()
+        
+        # Подключаемся к базе данных пользовательских данных
+        if database_name == 'cloverdash_bot':
+            data_config = {
+                'host': os.getenv('DATA_DATABASE_HOST') or config['host'],
+                'port': int(os.getenv('DATA_DATABASE_PORT', '5432')),
+                'user': os.getenv('DATA_DATABASE_USER') or config['user'],
+                'password': os.getenv('DATA_DATABASE_PASSWORD') or config['password'],
+                'database': database_name
+            }
+        else:
+            data_config = {
+                'host': config['host'],
+                'port': config['port'],
+                'user': config['user'],
+                'password': config['password'],
+                'database': database_name
+            }
+        
+        data_url = (
+            f"postgresql+psycopg2://{data_config['user']}:{data_config['password']}@"
+            f"{data_config['host']}:{data_config['port']}/{data_config['database']}?sslmode=require"
+        )
+        data_engine = create_engine(data_url)
+        
+        with data_engine.connect() as conn:
+            # Предоставляем права
+            grant_query = f"GRANT {permission_type} ON {schema_name}.{table_name} TO {role_name}"
+            conn.execute(text(grant_query))
+            conn.commit()
+            
+            logging.info(f'Право {permission_type} на {schema_name}.{table_name} предоставлено роли {role_name} в базе данных {database_name}')
+            return True
+            
+    except Exception as e:
+        logging.error(f'Ошибка при предоставлении прав {permission_type} на {schema_name}.{table_name} роли {role_name}: {e}', exc_info=True)
+        return False
+
+def add_table_permission(role_name, database_name, schema_name, table_name, permission_type):
+    """Добавление права доступа к таблице для роли"""
+    try:
+        # 1. Создаем роль в PostgreSQL (если не существует) с настройкой search_path
+        if not create_postgresql_role(role_name, database_name, schema_name):
+            logging.error(f'Не удалось создать роль {role_name} в PostgreSQL')
+            return False
+        
+        # 2. Предоставляем права в PostgreSQL
+        if not grant_postgresql_permission(role_name, database_name, schema_name, table_name, permission_type):
+            logging.error(f'Не удалось предоставить права {permission_type} на {schema_name}.{table_name} роли {role_name}')
+            return False
+        
+        # 3. Добавляем запись в таблицу user_permissions (метаданные)
+        engine = get_sqlalchemy_engine()
+        query = """
+            INSERT INTO user_permissions (role_name, database_name, schema_name, table_name, permission_type)
+            VALUES (:role_name, :database_name, :schema_name, :table_name, :permission_type)
+            ON CONFLICT (role_name, database_name, schema_name, table_name) 
+            DO UPDATE SET permission_type = :permission_type
+        """
+        
+        with engine.connect() as conn:
+            result = conn.execute(text(query), {
+                'role_name': role_name,
+                'database_name': database_name,
+                'schema_name': schema_name,
+                'table_name': table_name,
+                'permission_type': permission_type
+            })
+            conn.commit()
+            
+            logging.info(f'Право {permission_type} для роли {role_name} на таблицу {database_name}.{schema_name}.{table_name} добавлено в метаданные')
+            return True
+            
+    except Exception as e:
+        logging.error(f'Ошибка при добавлении права доступа: {e}', exc_info=True)
+        return False
+
+def remove_user_role_mapping(user_id, role_name, database_name):
+    """Удаление привязки пользователя к роли"""
+    try:
+        engine = get_sqlalchemy_engine()
+        
+        # Удаляем привязку, используя UUID напрямую
+        delete_query = """
+            DELETE FROM users_role_bd_mapping 
+            WHERE user_id = :user_id AND role_name = :role_name AND database_name = :database_name
+        """
+        
+        with engine.connect() as conn:
+            result = conn.execute(text(delete_query), {
+                'user_id': user_id,
+                'role_name': role_name,
+                'database_name': database_name
+            })
+            conn.commit()
+            
+            logging.info(f'Привязка пользователя {user_id} к роли {role_name} удалена')
+            return True
+            
+    except Exception as e:
+        logging.error(f'Ошибка при удалении привязки роли: {e}', exc_info=True)
+        return False
+
+def revoke_postgresql_permission(role_name, database_name, schema_name, table_name, permission_type):
+    """Отзыв прав роли в PostgreSQL"""
+    try:
+        # Получаем конфигурацию для подключения к базе данных пользовательских данных
+        config = get_dynamic_db_config()
+        
+        # Подключаемся к базе данных пользовательских данных
+        if database_name == 'cloverdash_bot':
+            data_config = {
+                'host': os.getenv('DATA_DATABASE_HOST') or config['host'],
+                'port': int(os.getenv('DATA_DATABASE_PORT', '5432')),
+                'user': os.getenv('DATA_DATABASE_USER') or config['user'],
+                'password': os.getenv('DATA_DATABASE_PASSWORD') or config['password'],
+                'database': database_name
+            }
+        else:
+            data_config = {
+                'host': config['host'],
+                'port': config['port'],
+                'user': config['user'],
+                'password': config['password'],
+                'database': database_name
+            }
+        
+        data_url = (
+            f"postgresql+psycopg2://{data_config['user']}:{data_config['password']}@"
+            f"{data_config['host']}:{data_config['port']}/{data_config['database']}?sslmode=require"
+        )
+        data_engine = create_engine(data_url)
+        
+        with data_engine.connect() as conn:
+            # Отзываем права
+            revoke_query = f"REVOKE {permission_type} ON {schema_name}.{table_name} FROM {role_name}"
+            conn.execute(text(revoke_query))
+            conn.commit()
+            
+            logging.info(f'Право {permission_type} на {schema_name}.{table_name} отозвано у роли {role_name} в базе данных {database_name}')
+            return True
+            
+    except Exception as e:
+        logging.error(f'Ошибка при отзыве прав {permission_type} на {schema_name}.{table_name} у роли {role_name}: {e}', exc_info=True)
+        return False
+
+def remove_table_permission(role_name, database_name, schema_name, table_name):
+    """Удаление права доступа к таблице для роли"""
+    try:
+        # 1. Сначала получаем тип права из метаданных
+        engine = get_sqlalchemy_engine()
+        get_permission_query = """
+            SELECT permission_type FROM user_permissions 
+            WHERE role_name = :role_name AND database_name = :database_name 
+            AND schema_name = :schema_name AND table_name = :table_name
+        """
+        
+        with engine.connect() as conn:
+            result = conn.execute(text(get_permission_query), {
+                'role_name': role_name,
+                'database_name': database_name,
+                'schema_name': schema_name,
+                'table_name': table_name
+            })
+            permission_row = result.fetchone()
+            
+            if permission_row:
+                permission_type = permission_row[0]
+                
+                # 2. Отзываем права в PostgreSQL
+                if not revoke_postgresql_permission(role_name, database_name, schema_name, table_name, permission_type):
+                    logging.warning(f'Не удалось отозвать права {permission_type} на {schema_name}.{table_name} у роли {role_name} в PostgreSQL')
+                
+                # 3. Удаляем запись из метаданных
+                delete_query = """
+                    DELETE FROM user_permissions 
+                    WHERE role_name = :role_name AND database_name = :database_name 
+                    AND schema_name = :schema_name AND table_name = :table_name
+                """
+                
+                conn.execute(text(delete_query), {
+                    'role_name': role_name,
+                    'database_name': database_name,
+                    'schema_name': schema_name,
+                    'table_name': table_name
+                })
+                conn.commit()
+                
+                logging.info(f'Право {permission_type} для роли {role_name} на таблицу {database_name}.{schema_name}.{table_name} удалено из метаданных')
+                return True
+            else:
+                logging.warning(f'Право для роли {role_name} на таблицу {database_name}.{schema_name}.{table_name} не найдено в метаданных')
+                return False
+            
+    except Exception as e:
+        logging.error(f'Ошибка при удалении права доступа: {e}', exc_info=True)
         return False
 
 def logout_button():
@@ -1228,7 +1707,7 @@ if 'show_add_column_form' not in st.session_state:
     st.session_state.show_add_column_form = False
 
 # Создаем вкладки для разных операций
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 Просмотр","➕ Добавление", "✏️ Редактирование", "🗑️ Удаление", "👥 Пользователи"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📋 Просмотр","➕ Добавление", "✏️ Редактирование", "🗑️ Удаление", "👥 Пользователи", "🔐 Права доступа", "🔍 Мои таблицы"])
 
 with tab1:
     st.header('Список записей')
@@ -1387,6 +1866,43 @@ with tab2:
                 st.error("❌ Недостаточно прав для добавления записей")
                 st.info("💡 Только администраторы и пользователи могут добавлять записи")
                 st.stop()
+            
+            # Проверяем доступ пользователя к указанной таблице
+            if new_database_name and new_schema_name and new_table_name:
+                # Импортируем функции валидации
+                try:
+                    from table_manager import validate_user_table_access, validate_user_schema_access
+                    
+                    # Проверяем доступ к схеме
+                    schema_validation = validate_user_schema_access(new_schema_name, current_user)
+                    if schema_validation['errors']:
+                        st.error("❌ Ошибка доступа к схеме:")
+                        for error in schema_validation['errors']:
+                            st.error(f"• {error}")
+                        st.stop()
+                    
+                    # Проверяем доступ к таблице
+                    table_data = {
+                        'database_name': new_database_name,
+                        'schema_name': new_schema_name,
+                        'table_name': new_table_name
+                    }
+                    table_validation = validate_user_table_access(table_data, current_user)
+                    if table_validation['errors']:
+                        st.error("❌ Ошибка доступа к таблице:")
+                        for error in table_validation['errors']:
+                            st.error(f"• {error}")
+                        st.stop()
+                    
+                    st.success("✅ Доступ к таблице подтвержден")
+                    
+                except ImportError as e:
+                    st.warning(f"⚠️ Не удалось импортировать функции валидации: {e}")
+                    st.info("💡 Продолжаем без проверки доступа...")
+                except Exception as e:
+                    st.warning(f"⚠️ Ошибка при проверке доступа: {e}")
+                    st.info("💡 Продолжаем без проверки доступа...")
+            
             if new_database_name and new_schema_name and new_table_name:
                 try:
                     # Проверяем подключение к БД
@@ -1651,7 +2167,7 @@ with tab5:
     if st.session_state.get('username') == 'admin':
         st.success("🔐 Доступ к управлению пользователями разрешен")
         
-        # Показываем текущих пользователей из таблицы user_backup
+        # Показываем текущих пользователей из таблицы users
         col1, col2 = st.columns([3, 1])
         with col1:
             st.subheader("📋 Список пользователей из БД")
@@ -1660,7 +2176,7 @@ with tab5:
                 st.rerun()
         
         try:
-            users_df = get_users_from_backup()
+            users_df = get_users_from_users()
             if not users_df.empty:
                 # Форматируем даты для лучшего отображения
                 if 'created_at' in users_df.columns:
@@ -1708,14 +2224,14 @@ with tab5:
                     st.info("📝 Нет пользователей для удаления (только системные пользователи)")
                     
             else:
-                st.info("📝 В таблице user_backup пока нет пользователей")
+                st.info("📝 В таблице users пока нет пользователей")
         except Exception as e:
             st.error(f"❌ Ошибка при загрузке пользователей: {e}")
             st.info("📝 Показываем базовый список пользователей")
             users_data = {
                 "Имя пользователя": ["admin", "user", "test"],
                 "Роль": ["Администратор", "Пользователь", "Тестовый"],
-                "Пароль": [os.getenv('ADMIN_PASSWORD', 'admin123'), os.getenv('USER_PASSWORD', 'user123'), os.getenv('TEST_PASSWORD', 'test123')]
+                "Пароль": [os.getenv('ADMIN_PASSWORD', '')]
             }
             users_df = pd.DataFrame(users_data)
             st.dataframe(users_df, use_container_width=True)
@@ -1763,7 +2279,7 @@ with tab5:
                             telegram_id=telegram_id,
                             telegram_username=telegram_username
                         ):
-                            st.success(f"✅ Пользователь '{new_username}' успешно добавлен в таблицу user_backup!")
+                            st.success(f"✅ Пользователь '{new_username}' успешно добавлен в таблицу users!")
                             st.info("🔄 Обновите страницу для отображения изменений")
                             # Просто перезагружаем страницу - форма очистится автоматически
                             st.rerun()
@@ -1774,5 +2290,460 @@ with tab5:
     else:
         st.warning("⚠️ Только администраторы могут управлять пользователями")
         st.info("👤 Текущий пользователь: " + st.session_state.get('username', 'Неизвестно'))
+
+# ===== ВКЛАДКА УПРАВЛЕНИЯ ПРАВАМИ ДОСТУПА =====
+with tab6:
+    st.header('🔐 Управление правами доступа')
+    
+    # Проверяем, является ли текущий пользователь администратором
+    if st.session_state.get('username') == 'admin':
+        st.success("🔐 Доступ к управлению правами разрешен")
+        
+        # Создаем подвкладки для разных операций с правами
+        perm_tab1, perm_tab2, perm_tab3, perm_tab4 = st.tabs([
+            "👥 Привязка пользователей к ролям", 
+            "🔑 Права ролей на таблицы", 
+            "📊 Просмотр текущих прав", 
+            "🗑️ Удаление прав"
+        ])
+        
+        # ===== ПОДВКЛАДКА 1: Привязка пользователей к ролям =====
+        with perm_tab1:
+            st.subheader('👥 Привязка пользователей к ролям')
+            
+            # Информационная панель с подсказками по схемам
+            with st.expander("ℹ️ Подсказки по схемам и базам данных", expanded=False):
+                st.markdown("""
+                **📋 Рекомендуемые схемы для баз данных:**
+                - **`cloverdash_bot`** → схема `public` (основная база приложения)
+                - **`test1`** → схема `demo1` (тестовая база с демо-данными)
+                
+                **🔍 Как определить правильную схему:**
+                1. Посмотрите на существующие привязки пользователя в таблице ниже
+                2. Если пользователь уже имеет привязки, используйте ту же схему
+                3. Для новых пользователей следуйте рекомендациям выше
+                
+                **⚠️ Важно:** Схема должна соответствовать реальной структуре базы данных!
+                """)
+            
+            # Получаем список пользователей
+            users_df = get_available_users()
+            if not users_df.empty:
+                # Создаем словарь для выбора пользователей
+                user_options = {}
+                for _, user in users_df.iterrows():
+                    display_name = f"{user['username']} ({user['full_name'] or 'Без имени'})"
+                    user_options[display_name] = user['id']
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    selected_user_display = st.selectbox(
+                        "👤 Выберите пользователя:",
+                        options=list(user_options.keys()),
+                        key="perm_user_select"
+                    )
+                    selected_user_id = user_options[selected_user_display]
+                
+                with col2:
+                    role_name = st.text_input(
+                        "🎭 Введите роль:",
+                        value="user",
+                        placeholder="Например: user",
+                        key="perm_role_input"
+                    )
+                
+                with col3:
+                    database_name = st.text_input(
+                        "🗄️ Введите базу данных:",
+                        value="cloverdash_bot",
+                        placeholder="Например: cloverdash_bot",
+                        key="perm_db_input"
+                    )
+                
+                with col4:
+                    # Определяем схему по умолчанию
+                    default_schema = "public"
+                    
+                    # Сначала проверяем существующие привязки пользователя
+                    try:
+                        existing_mappings = get_user_role_mappings()
+                        user_mappings = existing_mappings[existing_mappings['user_id'] == selected_user_id]
+                        if not user_mappings.empty:
+                            # Берем схему из последней привязки пользователя
+                            last_mapping = user_mappings.iloc[-1]
+                            if last_mapping['database_name'] == database_name:
+                                default_schema = last_mapping['schema_name']
+                    except:
+                        pass
+                    
+                    # Если не нашли в существующих привязках, определяем по базе данных
+                    if default_schema == "public":
+                        if database_name == "test1":
+                            default_schema = "demo1"
+                        elif database_name == "cloverdash_bot":
+                            default_schema = "public"
+                    
+                    schema_name = st.text_input(
+                        "📁 Схема (для справки):",
+                        value=default_schema, 
+                        placeholder="Например: public, demo1",
+                        key="perm_schema_input",
+                        help="Схема используется при настройке прав на таблицы. Автоматически определяется на основе существующих привязок пользователя или базы данных"
+                    )
+                
+                # Валидация схемы
+                schema_warning = ""
+                if database_name == "test1" and schema_name != "demo1":
+                    schema_warning = "⚠️ Для базы `test1` рекомендуется использовать схему `demo1`"
+                elif database_name == "cloverdash_bot" and schema_name != "public":
+                    schema_warning = "⚠️ Для базы `cloverdash_bot` рекомендуется использовать схему `public`"
+                
+                if schema_warning:
+                    st.warning(schema_warning)
+                
+                if st.button("➕ Добавить привязку", key="add_role_mapping"):
+                    if add_user_role_mapping(selected_user_id, role_name, database_name, schema_name):
+                        st.success(f"✅ Пользователь {selected_user_display} привязан к роли {role_name} в схеме {schema_name}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Ошибка при добавлении привязки")
+                
+                # Показываем текущие привязки
+                st.subheader('📋 Текущие привязки пользователей к ролям')
+                role_mappings_df = get_user_role_mappings()
+                if not role_mappings_df.empty:
+                    st.dataframe(role_mappings_df, use_container_width=True)
+                else:
+                    st.info("ℹ️ Привязки пользователей к ролям не найдены")
+            else:
+                st.warning("⚠️ Пользователи не найдены. Сначала создайте пользователей в разделе 'Пользователи'")
+        
+        # ===== ПОДВКЛАДКА 2: Права ролей на таблицы =====
+        with perm_tab2:
+            st.subheader('🔑 Права ролей на таблицы')
+            
+            # Получаем список таблиц
+            tables_df = get_available_tables()
+            if not tables_df.empty:
+                col1, col2, col3, col4, col5 = st.columns(5)
+                
+                with col1:
+                    role_name = st.text_input(
+                        "🎭 Введите роль:",
+                        value="user",
+                        placeholder="Например: user, admin, analyst",
+                        key="table_perm_role"
+                    )
+                
+                with col2:
+                    database_name = st.text_input(
+                        "🗄️ Введите базу данных:",
+                        value="cloverdash_bot",
+                        placeholder="Например: cloverdash_bot",
+                        key="table_perm_db"
+                    )
+                
+                with col3:
+                    schema_name = st.text_input(
+                        "📁 Введите схему:",
+                        value="public",
+                        placeholder="Например: public, demo1",
+                        key="table_perm_schema"
+                    )
+                
+                with col4:
+                    # Создаем список таблиц для выбора
+                    table_options = []
+                    for _, table in tables_df.iterrows():
+                        table_options.append(table['table_name'])
+                    
+                    table_name = st.text_input(
+                        "📋 Выберите таблицу:",
+                        value="table_name",
+                        placeholder="Например: table_name",
+                        key="table_perm_table"
+                    )
+                
+                with col5:
+                    permission_type = st.text_input(
+                        "🔐 Тип права:",
+                        value="SELECT",
+                        placeholder="Например: SELECT, INSERT, UPDATE, DELETE",
+                        key="table_perm_type"
+                    )
+                
+                if st.button("➕ Добавить право", key="add_table_permission"):
+                    if add_table_permission(role_name, database_name, schema_name, table_name, permission_type):
+                        st.success(f"✅ Право {permission_type} для роли {role_name} на таблицу {database_name}.{schema_name}.{table_name} добавлено")
+                        st.rerun()
+                    else:
+                        st.error("❌ Ошибка при добавлении права")
+                
+                # Показываем текущие права
+                st.subheader('📋 Текущие права ролей на таблицы')
+                permissions_df = get_user_permissions()
+                if not permissions_df.empty:
+                    st.dataframe(permissions_df, use_container_width=True)
+                else:
+                    st.info("ℹ️ Права доступа не настроены")
+            else:
+                st.warning("⚠️ Таблицы не найдены. Убедитесь, что база данных настроена")
+        
+        # ===== ПОДВКЛАДКА 3: Просмотр текущих прав =====
+        with perm_tab3:
+            st.subheader('📊 Просмотр текущих прав')
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader('👥 Привязки пользователей к ролям')
+                role_mappings_df = get_user_role_mappings()
+                if not role_mappings_df.empty:
+                    st.dataframe(role_mappings_df, use_container_width=True)
+                else:
+                    st.info("ℹ️ Привязки пользователей к ролям не найдены")
+            
+            with col2:
+                st.subheader('🔑 Права ролей на таблицы')
+                permissions_df = get_user_permissions()
+                if not permissions_df.empty:
+                    st.dataframe(permissions_df, use_container_width=True)
+                else:
+                    st.info("ℹ️ Права доступа не настроены")
+            
+            # Статистика
+            st.subheader('📈 Статистика прав доступа')
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("👥 Пользователей с ролями", len(role_mappings_df))
+            
+            with col2:
+                st.metric("🔑 Настроенных прав", len(permissions_df))
+            
+            with col3:
+                unique_roles = permissions_df['role_name'].nunique() if not permissions_df.empty else 0
+                st.metric("🎭 Уникальных ролей", unique_roles)
+        
+        # ===== ПОДВКЛАДКА 4: Удаление прав =====
+        with perm_tab4:
+            st.subheader('🗑️ Удаление прав доступа')
+            
+            # Удаление привязок пользователей к ролям
+            st.subheader('👥 Удаление привязок пользователей к ролям')
+            role_mappings_df = get_user_role_mappings()
+            
+            if not role_mappings_df.empty:
+                # Создаем список для выбора привязок для удаления
+                mapping_options = []
+                for _, mapping in role_mappings_df.iterrows():
+                    display_name = f"{mapping['username']} -> {mapping['role_name']} ({mapping['database_name']})"
+                    mapping_options.append((display_name, mapping))
+                
+                selected_mapping_display = st.selectbox(
+                    "Выберите привязку для удаления:",
+                    options=[opt[0] for opt in mapping_options],
+                    key="delete_mapping_select"
+                )
+                
+                if st.button("🗑️ Удалить привязку", key="delete_role_mapping"):
+                    # Находим выбранную привязку
+                    selected_mapping = None
+                    for opt in mapping_options:
+                        if opt[0] == selected_mapping_display:
+                            selected_mapping = opt[1]
+                            break
+                    
+                    if selected_mapping is not None:
+                        if remove_user_role_mapping(
+                            selected_mapping['user_id'], 
+                            selected_mapping['role_name'], 
+                            selected_mapping['database_name']
+                        ):
+                            st.success(f"✅ Привязка {selected_mapping_display} удалена")
+                            st.rerun()
+                        else:
+                            st.error("❌ Ошибка при удалении привязки")
+            else:
+                st.info("ℹ️ Привязки пользователей к ролям не найдены")
+            
+            st.divider()
+            
+            # Удаление прав ролей на таблицы
+            st.subheader('🔑 Удаление прав ролей на таблицы')
+            permissions_df = get_user_permissions()
+            
+            if not permissions_df.empty:
+                # Создаем список для выбора прав для удаления
+                permission_options = []
+                for _, perm in permissions_df.iterrows():
+                    display_name = f"{perm['role_name']} -> {perm['database_name']}.{perm['schema_name']}.{perm['table_name']} ({perm['permission_type']})"
+                    permission_options.append((display_name, perm))
+                
+                selected_permission_display = st.selectbox(
+                    "Выберите право для удаления:",
+                    options=[opt[0] for opt in permission_options],
+                    key="delete_permission_select"
+                )
+                
+                if st.button("🗑️ Удалить право", key="delete_table_permission"):
+                    # Находим выбранное право
+                    selected_permission = None
+                    for opt in permission_options:
+                        if opt[0] == selected_permission_display:
+                            selected_permission = opt[1]
+                            break
+                    
+                    if selected_permission is not None:
+                        if remove_table_permission(
+                            selected_permission['role_name'],
+                            selected_permission['database_name'],
+                            selected_permission['schema_name'],
+                            selected_permission['table_name']
+                        ):
+                            st.success(f"✅ Право {selected_permission_display} удалено")
+                            st.rerun()
+                        else:
+                            st.error("❌ Ошибка при удалении права")
+            else:
+                st.info("ℹ️ Права доступа не настроены")
+    
+    else:
+        st.warning("⚠️ Только администраторы могут управлять правами доступа")
+        st.info("👤 Текущий пользователь: " + st.session_state.get('username', 'Неизвестно'))
+
+# ===== ВКЛАДКА 7: Мои таблицы =====
+with tab7:
+    st.header('🔍 Мои доступные таблицы')
+    
+    current_user = st.session_state.get('username', 'Неизвестно')
+    st.info(f"👤 Просмотр таблиц для пользователя: **{current_user}**")
+    
+    try:
+        # Получаем доступные таблицы для текущего пользователя
+        accessible_tables = get_user_accessible_tables(current_user)
+        
+        if not accessible_tables.empty:
+            st.success(f"✅ Найдено {len(accessible_tables)} доступных таблиц")
+            
+            # Показываем статистику
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                unique_databases = accessible_tables['database_name'].nunique()
+                st.metric("🗄️ Баз данных", unique_databases)
+            
+            with col2:
+                unique_schemas = accessible_tables['schema_name'].nunique()
+                st.metric("📁 Схем", unique_schemas)
+            
+            with col3:
+                unique_tables = accessible_tables['table_name'].nunique()
+                st.metric("📋 Таблиц", unique_tables)
+            
+            with col4:
+                unique_roles = accessible_tables['role_name'].nunique()
+                st.metric("🎭 Ролей", unique_roles)
+            
+            # Фильтры
+            st.subheader("🔍 Фильтры")
+            filter_col1, filter_col2, filter_col3 = st.columns(3)
+            
+            with filter_col1:
+                database_filter = st.selectbox(
+                    "База данных:",
+                    options=["Все"] + sorted(accessible_tables['database_name'].unique().tolist()),
+                    key="user_tables_db_filter"
+                )
+            
+            with filter_col2:
+                schema_filter = st.selectbox(
+                    "Схема:",
+                    options=["Все"] + sorted(accessible_tables['schema_name'].unique().tolist()),
+                    key="user_tables_schema_filter"
+                )
+            
+            with filter_col3:
+                permission_filter = st.selectbox(
+                    "Тип права:",
+                    options=["Все"] + sorted(accessible_tables['permission_type'].unique().tolist()),
+                    key="user_tables_perm_filter"
+                )
+            
+            # Применяем фильтры
+            filtered_tables = accessible_tables.copy()
+            
+            if database_filter != "Все":
+                filtered_tables = filtered_tables[filtered_tables['database_name'] == database_filter]
+            
+            if schema_filter != "Все":
+                filtered_tables = filtered_tables[filtered_tables['schema_name'] == schema_filter]
+            
+            if permission_filter != "Все":
+                filtered_tables = filtered_tables[filtered_tables['permission_type'] == permission_filter]
+            
+            # Отображаем отфильтрованные таблицы
+            st.subheader(f"📊 Доступные таблицы ({len(filtered_tables)} из {len(accessible_tables)})")
+            
+            if not filtered_tables.empty:
+                # Создаем красивую таблицу
+                display_table = filtered_tables[['database_name', 'schema_name', 'table_name', 'object_type', 'permission_type', 'role_name']].copy()
+                display_table.columns = ['База данных', 'Схема', 'Таблица', 'Тип', 'Право', 'Роль']
+                
+                # Добавляем полное имя таблицы
+                display_table['Полное имя'] = display_table['База данных'] + '.' + display_table['Схема'] + '.' + display_table['Таблица']
+                
+                # Переупорядочиваем колонки
+                display_table = display_table[['Полное имя', 'База данных', 'Схема', 'Таблица', 'Тип', 'Право', 'Роль']]
+                
+                st.dataframe(display_table, use_container_width=True)
+                
+                # Кнопка экспорта
+                if st.button("📥 Экспортировать в CSV", key="export_user_tables"):
+                    csv_data = filtered_tables.to_csv(index=False)
+                    st.download_button(
+                        label="💾 Скачать CSV",
+                        data=csv_data,
+                        file_name=f"user_accessible_tables_{current_user}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv"
+                    )
+            else:
+                st.warning("⚠️ Нет таблиц, соответствующих выбранным фильтрам")
+            
+            # Показываем доступные схемы
+            st.subheader("📁 Доступные схемы")
+            accessible_schemas = get_user_accessible_schemas(current_user)
+            
+            if accessible_schemas:
+                schema_cols = st.columns(min(len(accessible_schemas), 4))
+                for i, schema in enumerate(accessible_schemas):
+                    with schema_cols[i % 4]:
+                        st.info(f"📁 **{schema}**")
+            else:
+                st.warning("⚠️ Нет доступных схем")
+                
+        else:
+            st.warning("⚠️ У вас нет доступа ни к одной таблице")
+            st.info("💡 Обратитесь к администратору для настройки прав доступа")
+            
+            # Показываем информацию о пользователе
+            st.subheader("👤 Информация о пользователе")
+            user_role = get_user_role(current_user)
+            st.info(f"**Роль:** {user_role}")
+            
+            # Показываем привязки к ролям
+            role_mappings = get_user_role_mappings()
+            user_mappings = role_mappings[role_mappings['username'] == current_user] if not role_mappings.empty else pd.DataFrame()
+            
+            if not user_mappings.empty:
+                st.subheader("🎭 Ваши роли")
+                st.dataframe(user_mappings[['role_name', 'database_name']], use_container_width=True)
+            else:
+                st.warning("⚠️ У вас нет назначенных ролей")
+                
+    except Exception as e:
+        st.error(f"❌ Ошибка при получении доступных таблиц: {e}")
+        logging.error(f'Ошибка в разделе "Мои таблицы": {e}', exc_info=True)
 
 

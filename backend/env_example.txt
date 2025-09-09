@@ -2,6 +2,9 @@
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-3.5-turbo
 OPENAI_TEMPERATURE=0
+# Для обхода региональных ограничений (опционально):
+# OPENAI_BASE_URL=https://api.openai.com/v1  # или другой эндпоинт
+# OPENAI_PROXY=http://proxy-server:port  # прокси сервер
 
 # Application Database Configuration (пользователи, история, настройки)
 # Можно использовать полный URL или отдельные параметры
