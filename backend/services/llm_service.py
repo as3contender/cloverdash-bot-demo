@@ -122,21 +122,12 @@ class LLMService:
         schema = await self._get_database_schema_with_user_permissions(user_id)
         schema_description = self._format_schema_for_prompt(schema)
         logger.info(f"User ID: {user_id}, Schema description: {schema_description}")
-        prompt = f"""
-Ты - эксперт по SQL запросам. На основе описания схемы базы данных и пользовательского запроса на естественном языке, сгенерируй корректный SQL запрос.
-
-{schema_description}
-
-ЗАПРОС ПОЛЬЗОВАТЕЛЯ: {natural_query}
-
-ВАЖНЫЕ ПРАВИЛА:
-- Генерируй только SELECT запросы
-- Используй только таблицы, доступные пользователю {user_id}
-- НЕ указывай префикс схемы в FROM (используй просто имя таблицы, например: FROM users)
-- ИСКЛЮЧЕНИЕ: Для системных функций (CURRENT_DATE, CURRENT_TIME, NOW(), etc.) НЕ используй FROM
-- Отвечай на языке: {user_language}
-- Объясни логику запроса
-
+        # Создаем динамические инструкции на основе доступных таблиц
+        special_instructions = ""
+        example_sql = ""
+        
+        if "users" in schema:
+            special_instructions = """
 СПЕЦИАЛЬНЫЕ ИНСТРУКЦИИ ДЛЯ ТАБЛИЦЫ users:
 - Для подсчета пользователей используй: SELECT COUNT(*) FROM users
 - Для получения списка пользователей используй: SELECT * FROM users
@@ -150,6 +141,41 @@ SELECT COUNT(*) AS total_users
 FROM users 
 WHERE is_active = true
 ```
+"""
+        elif "bills_view" in schema:
+            special_instructions = """
+СПЕЦИАЛЬНЫЕ ИНСТРУКЦИИ ДЛЯ ПРЕДСТАВЛЕНИЯ bills_view:
+- Для анализа продаж используй: SELECT * FROM bills_view
+- Для подсчета записей используй: SELECT COUNT(*) FROM bills_view
+- Для фильтрации по дате используй колонку: bill_date
+- Для фильтрации по товару используй колонку: goods_name
+- Для анализа сумм используй колонку: row_sum
+- Для анализа количества используй колонку: row_quantity
+
+ПРИМЕР ПРАВИЛЬНОГО SQL ЗАПРОСА:
+```sql
+SELECT COUNT(*) AS total_records 
+FROM bills_view 
+WHERE bill_date >= '2025-01-01'
+```
+"""
+        
+        prompt = f"""
+Ты - эксперт по SQL запросам. На основе описания схемы базы данных и пользовательского запроса на естественном языке, сгенерируй корректный SQL запрос.
+
+{schema_description}
+
+ЗАПРОС ПОЛЬЗОВАТЕЛЯ: {natural_query}
+
+ВАЖНЫЕ ПРАВИЛА:
+- Генерируй только SELECT запросы
+- Используй только таблицы, доступные пользователю {user_id}
+- НЕ указывай префикс схемы в FROM (используй просто имя таблицы, например: FROM bills_view)
+- ИСКЛЮЧЕНИЕ: Для системных функций (CURRENT_DATE, CURRENT_TIME, NOW(), etc.) НЕ используй FROM
+- Отвечай на языке: {user_language}
+- Объясни логику запроса
+
+{special_instructions}
 
 SQL запрос:
 ```sql
